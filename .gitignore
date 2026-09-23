@@ -1,0 +1,19 @@
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+
+# Lenguaje de programación
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# Base de datos local
+*.sqlite
+*.sqlite3
+!central/database/schema.sql
+
+# Logs y ficheros temporales
+*.log
+.DS_Store
