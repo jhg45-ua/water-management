@@ -1,3 +1,4 @@
+import argparse
 import socket
 import threading
 import time
@@ -7,21 +8,46 @@ from pathlib import Path
 # Añade la carpeta raíz (water-management) al path de Python
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from common.protocol.json_lines import JsonLinesProtocol
 from common.protocol.standard_lrc import StandardLRCProtocol
 
 HOST = '127.0.0.1'
 PORT = 9999
+PROTOCOLS = {
+    'lrc': StandardLRCProtocol,
+    'standard': StandardLRCProtocol,
+    'standard_lrc': StandardLRCProtocol,
+    'json': JsonLinesProtocol,
+    'json_lines': JsonLinesProtocol,
+    'jsonlines': JsonLinesProtocol,
+}
 
-def run_server():
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Prueba de un protocolo de comunicación.',
+        usage='python tests/test_protocol.py <lrc|json>\n\nOpciones disponibles: lrc, json',
+        add_help=True,
+    )
+    parser.add_argument(
+        'protocol',
+        choices=sorted(PROTOCOLS.keys()),
+        help='Protocolo a usar: lrc o json.'
+    )
+    args = parser.parse_args()
+    return args.protocol
+
+
+def run_server(protocol_class):
     """Función que ejecuta el servidor en un hilo separado."""
-    protocol = StandardLRCProtocol()
+    protocol = protocol_class()
 
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_sock.bind((HOST, PORT))
     server_sock.listen(1)
 
-    print("[SERVIDOR] A la escucha en puerto 9999...")
+    print(f"[SERVIDOR] A la escucha en puerto 9999 usando '{protocol.__class__.__name__}'...")
 
     client_conn, client_addr = server_sock.accept()
 
@@ -38,10 +64,11 @@ def run_server():
         client_conn.close()
         server_sock.close()
 
-def run_client():
+
+def run_client(protocol_class):
     """Función que ejecuta el cliente."""
     time.sleep(0.2)  # Dar tiempo al servidor para arrancar
-    protocol = StandardLRCProtocol()
+    protocol = protocol_class()
 
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_sock.connect((HOST, PORT))
@@ -56,12 +83,15 @@ def run_client():
     finally:
         client_sock.close()
 
+
 if __name__ == "__main__":
+    protocol_name = parse_args()
+    protocol_class = PROTOCOLS[protocol_name]
     # Ejecutamos el servidor en un hilo secundario y el cliente en otro
-    hilo_servidor = threading.Thread(target=run_server)
-    hilo_cliente = threading.Thread(target=run_client)
+    hilo_servidor = threading.Thread(target=run_server, args=(protocol_class,))
+    hilo_cliente = threading.Thread(target=run_client, args=(protocol_class,))
     hilo_servidor.start()
     hilo_cliente.start()
     hilo_servidor.join()
     hilo_cliente.join()
-    print("\n✅ ¡Prueba completada con éxito!")
+    print("\n¡Prueba completada con éxito!")
