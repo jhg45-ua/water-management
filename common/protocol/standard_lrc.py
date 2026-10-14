@@ -24,7 +24,7 @@ class StandardLRCProtocol(BaseProtocol):
     Flujo: ENQ -> ACK -> REQUEST -> ACK -> ANSWER -> ACK -> EOT
     """
 
-    def _recv_exect(self, sock: socket.socket, num_bytes: int) -> bytes:
+    def _recv_exact(self, sock: socket.socket, num_bytes: int) -> bytes:
         """Lee del socket exactamente num_bytes, acumulando en un buffer."""
         buffer = bytearray()
         while len(buffer) < num_bytes:
@@ -46,14 +46,14 @@ class StandardLRCProtocol(BaseProtocol):
         y responde automáticamente con ACK o NACK.
         """
         # Esperamos obligatoriamente que empiece por <STX>
-        stx = self._recv_exect(sock, 1)
+        stx = self._recv_exact(sock, 1)
         if stx != STX:
             raise ValueError(f"Trama corrupta: se esperaba STX, se recibió {stx}")
 
         # Leemos byte a byte el DATA hasta encontrar <ETX>
         payload = bytearray()
         while True:
-            b = self._recv_exect(sock, 1)
+            b = self._recv_exact(sock, 1)
             if b == ETX:
                 break
             payload.extend(b)
@@ -76,7 +76,7 @@ class StandardLRCProtocol(BaseProtocol):
         """Flujo: ENQ -> ACK -> ENVÍA REQ -> ACK -> RECIBE ANS -> ACK -> EOT"""
         # Saludo incial: enviar ENQ y esperar ACK
         sock.sendall(ENQ)
-        if self._recv_exect(sock, 1) != ACK:
+        if self._recv_exact(sock, 1) != ACK:
             raise ConnectionError("El servidor rechazó el ENQ inicial")
 
         # Enviar petición empaquetada y esperar ACK
