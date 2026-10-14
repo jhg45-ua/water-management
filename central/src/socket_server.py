@@ -18,53 +18,67 @@ from common import protocol
 from src import state
 
 
-def start_server(port):
+def iniciar_servidor(puerto):
     """Abre el puerto y se queda esperando conexiones.
     Por cada Monitor que conecta, lanza un hilo para atenderlo.
     Esta función no termina nunca, así que hay que llamarla desde un hilo."""
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
     # Permite reiniciar Central sin esperar a que el sistema libere el puerto
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(("0.0.0.0", port))
-    server.listen()
-    print(f"[SOCKETS] Escuchando Monitores en el puerto {port}")
+    servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    servidor.bind(("0.0.0.0", puerto))
+    servidor.listen()
+
+    print(f"[SOCKETS] Escuchando Monitores en el puerto {puerto}")
 
     while True:
-        conn, address = server.accept()
-        print(f"[SOCKETS] Nueva conexión desde {address}")
-        thread = threading.Thread(target=handle_monitor, args=(conn,), daemon=True)
-        thread.start()
+        conexion, direccion = servidor.accept()
+        print(f"[SOCKETS] Nueva conexión desde {direccion}")
+
+        hilo = threading.Thread(
+            target=atender_monitor,
+            args=(conexion,),
+            daemon=True
+        )
+        hilo.start()
 
 
-def handle_monitor(conn):
+def atender_monitor(conexion):
     """Atiende a un Monitor durante toda su conexión."""
-    # Id de la estación de este Monitor. Hasta que se autentique es None.
-    ws_id = None
+    # Identificador de la estación de este Monitor. Hasta que se autentique es None.
+    identificador_estacion = None
 
     try:
         # 1. El Monitor tiene que empezar con un ENQ
-        kind, content = protocol.receive(conn)
-        if kind != "CONTROL" or content != protocol.ENQ:
-            conn.sendall(protocol.NACK)
+        tipo, contenido = protocol.recibir(conexion)
+
+        if tipo != "CONTROL" or contenido != protocol.ENQ:
+            conexion.sendall(protocol.NACK)
             return
-        conn.sendall(protocol.ACK)
+
+        conexion.sendall(protocol.ACK)
 
         # 2. Bucle: recibir peticiones hasta que llegue EOT o se cierre la conexión
         while True:
-            kind, content = protocol.receive(conn)
+            tipo, contenido = protocol.recibir(conexion)
 
-            if kind == "CONTROL" and content == protocol.EOT:
+            if tipo == "CONTROL" and contenido == protocol.EOT:
                 break
 
             # Mensaje corrupto (LRC mal) o algo inesperado: pedimos que lo repita
-            if kind != "MESSAGE":
-                conn.sendall(protocol.NACK)
+            if tipo != "MESSAGE":
+                conexion.sendall(protocol.NACK)
                 continue
 
             # Mensaje correcto: lo confirmamos, lo procesamos y enviamos la respuesta
-            conn.sendall(protocol.ACK)
-            answer, ws_id = process_request(content, ws_id)
-            protocol.send_answer(conn, answer)
+            conexion.sendall(protocol.ACK)
+
+            respuesta, identificador_estacion = procesar_peticion(
+                contenido,
+                identificador_estacion
+            )
+
+            protocol.enviar_respuesta(conexion, respuesta)
 
     except (ConnectionError, OSError):
         # El Monitor ha cerrado o se ha caído la conexión
@@ -72,51 +86,61 @@ def handle_monitor(conn):
 
     finally:
         # Si la estación estaba autenticada, ahora queda desconectada
-        if ws_id is not None:
-            state.set_status(ws_id, state.DISCONNECTED)
-            print(f"[SOCKETS] {ws_id} desconectada")
-        conn.close()
+        if identificador_estacion is not None:
+            state.establecer_estado(identificador_estacion, state.DISCONNECTED)
+            print(f"[SOCKETS] {identificador_estacion} desconectada")
+
+        conexion.close()
 
 
-def process_request(text, ws_id):
+def procesar_peticion(texto, identificador_estacion):
     """Interpreta una petición del Monitor.
-    Devuelve la respuesta y el id de la estación (que cambia al autenticarse)."""
-    parts = text.split(protocol.SEPARATOR)
-    operation = parts[0]
+    Devuelve la respuesta y el identificador de la estación
+    (que cambia al autenticarse)."""
+    partes = texto.split(protocol.SEPARATOR)
+    operacion = partes[0]
 
     # --- AUTH#id#ubicacion ---
-    if operation == "AUTH":
-        if len(parts) < 3 or parts[1] == "":
-            return "KO#Mensaje AUTH incorrecto", ws_id
+    if operacion == "AUTH":
+        if len(partes) < 3 or partes[1] == "":
+            return "KO#Mensaje AUTH incorrecto", identificador_estacion
 
-        new_id = parts[1]
-        location = parts[2]
+        nuevo_identificador = partes[1]
+        ubicacion = partes[2]
 
         # Si esa estación ya está conectada con otro Monitor, rechazamos
-        current_status = state.get_status(new_id)
-        if current_status is not None and current_status != state.DISCONNECTED:
-            return "KO#Estación ya conectada", ws_id
+        estado_actual = state.obtener_estado(nuevo_identificador)
 
-        state.add_station(new_id, location)
-        state.set_status(new_id, state.ACTIVE)
-        print(f"[SOCKETS] {new_id} autenticada en '{location}'")
-        return "OK", new_id
+        if estado_actual is not None and estado_actual != state.DISCONNECTED:
+            return "KO#Estación ya conectada", identificador_estacion
+
+        state.agregar_estacion(nuevo_identificador, ubicacion)
+        state.establecer_estado(nuevo_identificador, state.ACTIVE)
+
+        print(
+            f"[SOCKETS] {nuevo_identificador} autenticada en '{ubicacion}'"
+        )
+
+        return "OK", nuevo_identificador
 
     # El resto de operaciones solo valen si el Monitor ya se ha autenticado
-    if ws_id is None:
-        return "KO#No autenticado", ws_id
+    if identificador_estacion is None:
+        return "KO#No autenticado", identificador_estacion
 
     # --- LEAK#id y RECOVERED#id ---
-    if operation in ("LEAK", "RECOVERED"):
-        if len(parts) < 2 or parts[1] != ws_id:
-            return "KO#Id incorrecto", ws_id
+    if operacion in ("LEAK", "RECOVERED"):
+        if len(partes) < 2 or partes[1] != identificador_estacion:
+            return "KO#Id incorrecto", identificador_estacion
 
-        if operation == "LEAK":
-            state.set_status(ws_id, state.LEAK)
-            print(f"[SOCKETS] AVERÍA en {ws_id}: fuga detectada")
+        if operacion == "LEAK":
+            state.establecer_estado(identificador_estacion, state.LEAK)
+            print(
+                f"[SOCKETS] AVERÍA en {identificador_estacion}: fuga detectada"
+            )
         else:
-            state.set_status(ws_id, state.ACTIVE)
-            print(f"[SOCKETS] {ws_id} recuperada")
-        return "OK", ws_id
+            state.establecer_estado(identificador_estacion, state.ACTIVE)
+            print(f"[SOCKETS] {identificador_estacion} recuperada")
 
-    return "KO#Operación desconocida", ws_id
+        return "OK", identificador_estacion
+
+    return "KO#Operación desconocida", identificador_estacion

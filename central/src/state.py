@@ -31,7 +31,7 @@ def cargar_desde_bd():
     with lock:
         estaciones.clear()
 
-        for fila in db.list_stations():
+        for fila in db.listar_estaciones():
             estaciones[fila["id"]] = crear_entrada(
                 fila["location"],
                 fila["status"]
@@ -52,7 +52,7 @@ def crear_entrada(ubicacion, estado):
 def agregar_estacion(identificador, ubicacion):
     """Añade una estación nueva (o actualiza su ubicación si ya estaba).
     Se usa cuando un Monitor se autentica: la guarda en la BD y en memoria."""
-    db.register_station(identificador, ubicacion)
+    db.registrar_estacion(identificador, ubicacion)
 
     with lock:
         if identificador in estaciones:
@@ -100,7 +100,7 @@ def establecer_estado(identificador, estado):
             estaciones[identificador]["operator"] = None
 
     # La BD se actualiza fuera del lock para no bloquear a los demás hilos
-    db.set_status(identificador, estado)
+    db.establecer_estado(identificador, estado)
 
 
 def actualizar_riego(identificador, operario, caudal, volumen):
@@ -125,7 +125,7 @@ def desconectar_todas_estaciones():
             estaciones[identificador]["volume"] = 0
             estaciones[identificador]["operator"] = None
 
-    db.set_all_disconnected()
+    db.desconectar_todas_estaciones()
 
 
 def obtener_todas():
