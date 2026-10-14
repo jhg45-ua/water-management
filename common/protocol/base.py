@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 import socket
 
+# Interfaz base para los protocolos de comunicación por sockets
+# Por eso usamos @abstractmethod y no implementamos nada aquí, solo definimos la interfaz.
 class BaseProtocol(ABC):
     """Interfaz base para los protocolos de comunicacion por sockets"""
 

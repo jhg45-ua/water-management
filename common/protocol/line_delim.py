@@ -3,7 +3,7 @@ from common.protocol.base import BaseProtocol
 
 DELIMITER = b'\n'
 
-class JsonLinesProtocol(BaseProtocol):
+class LineDelimitedProtocol(BaseProtocol):
     """
     Protocolo moderno basado en mensajes delimitados por salto de línea (\n).
     - Sin handshakes innecesarios (sin ENQ/ACK/EOT).

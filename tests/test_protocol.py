@@ -8,7 +8,7 @@ from pathlib import Path
 # Añade la carpeta raíz (water-management) al path de Python
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from common.protocol.json_lines import JsonLinesProtocol
+from common.protocol.line_delim import LineDelimitedProtocol
 from common.protocol.standard_lrc import StandardLRCProtocol
 
 HOST = '127.0.0.1'
@@ -17,22 +17,22 @@ PROTOCOLS = {
     'lrc': StandardLRCProtocol,
     'standard': StandardLRCProtocol,
     'standard_lrc': StandardLRCProtocol,
-    'json': JsonLinesProtocol,
-    'json_lines': JsonLinesProtocol,
-    'jsonlines': JsonLinesProtocol,
+    'line': LineDelimitedProtocol,
+    'line_delim': LineDelimitedProtocol,
+    'line_delimited': LineDelimitedProtocol,
 }
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Prueba de un protocolo de comunicación.',
-        usage='python tests/test_protocol.py <lrc|json>\n\nOpciones disponibles: lrc, json',
+        usage='python tests/test_protocol.py <lrc|line>\n\nOpciones disponibles: lrc, line',
         add_help=True,
     )
     parser.add_argument(
         'protocol',
         choices=sorted(PROTOCOLS.keys()),
-        help='Protocolo a usar: lrc o json.'
+        help='Protocolo a usar: lrc o line.'
     )
     args = parser.parse_args()
     return args.protocol
