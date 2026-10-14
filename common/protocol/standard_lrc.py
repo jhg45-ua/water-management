@@ -70,3 +70,49 @@ class StandardLRCProtocol(BaseProtocol):
         # Si todo está correcto, confirmamos con ACK
         sock.sendall(ACK)
         return payload.decode('utf-8')
+
+    # Lado Cliente
+    def send_request(self, sock: socket.socket, message: str) -> str:
+        """Flujo: ENQ -> ACK -> ENVÍA REQ -> ACK -> RECIBE ANS -> ACK -> EOT"""
+        # Saludo incial: enviar ENQ y esperar ACK
+        sock.sendall(ENQ)
+        if self._recv_exect(sock, 1) != ACK:
+            raise ConnectionError("El servidor rechazó el ENQ inicial")
+
+        # Enviar petición empaquetada y esperar ACK
+        sock.sendall(self._pack_frame(message))
+        if self._recv_exact(sock, 1) != ACK:
+            raise ConnectionError("El servidor rechazó la trama (LRC o formato inválido)")
+
+        # Recibir la respuesta del servidor (valida LRC y envía ACK)
+        answer = self._unpack_frame(sock)
+
+        # Cerrar el ciclo enviando EOT
+        sock.sendall(EOT)
+        return answer
+
+    # Lado Servidor
+    def receive_request(self, sock: socket.socket) -> str:
+        """Espera ENQ -> responde ACK -> recibe REQ (y responde ACK)"""
+        # Esperar ENQ del cliente
+        enq = self._recv_exact(sock, 1)
+        if enq != ENQ:
+            sock.sendall(NACK)
+            raise ValueError(f"Se esperaba ENQ, recibido: {enq}")
+        sock.sendall(ACK)
+
+        #  Recibir la petición
+        request = self._unpack_frame(sock)
+        return request
+
+    def send_response(self, sock: socket.socket, message: str) -> None:
+        """Envía ANS -> espera ACK -> espera EOT"""
+        # Enviar respuesta empaquetada
+        sock.sendall(self._pack_frame(message))
+        if self._recv_exact(sock, 1) != ACK:
+            raise ConnectionError("El cliente no confirmó la respuesta recibida (NACK)")
+        
+        # Esperar que el cliente cierre con EOT
+        eot = self._recv_exact(sock, 1)
+        if eot != EOT:
+            raise ValueError(f"Se esperaba EOT para terminar el ciclo, recibido: {eot}")
