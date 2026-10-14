@@ -10,7 +10,7 @@ class BaseProtocol(ABC):
         pass
 
     @abstractmethod
-    def recieve_request(self, sock: socket.socket) -> str:
+    def receive_request(self, sock: socket.socket) -> str:
         "Servidor: recibe peticion del cliente"
         pass
 
