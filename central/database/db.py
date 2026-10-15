@@ -25,10 +25,7 @@ def ini_bd(ruta=None):  # Crea las tablas si no existen. Se llama una vez al arr
     conexion = obt_conex()
     cursor = conexion.cursor()
 
-    # Operarios: solo necesitamos su identificador y un nombre
     cursor.execute("""CREATE TABLE IF NOT EXISTS operators (id   TEXT PRIMARY KEY,name TEXT) """)
-
-    # Estaciones de riego: id, ubicación, estado actual y última vez que se supo de ella
     cursor.execute("""CREATE TABLE IF NOT EXISTS stations (id        TEXT PRIMARY KEY,location  TEXT,status    TEXT,last_seen TEXT)""")
 
     conexion.commit()
@@ -39,7 +36,7 @@ def ini_bd(ruta=None):  # Crea las tablas si no existen. Se llama una vez al arr
 # OPERARIOS
 # ---------------------------------------------------------------
 
-def alta_oper(identificador, nombre):  # Da de alta un operario (si ya existía, le actualiza el nombre)
+def alta_oper(identificador, nombre):
     conexion = obt_conex()
     cursor = conexion.cursor()
 
@@ -52,7 +49,7 @@ def alta_oper(identificador, nombre):  # Da de alta un operario (si ya existía,
     conexion.close()
 
 
-def hay_oper(identificador):  # True si el operario está dado de alta (Central lo usa para validar al FO)
+def hay_oper(identificador):
     conexion = obt_conex()
     cursor = conexion.cursor()
 
@@ -82,7 +79,7 @@ def reg_estac(identificador, ubicacion):  # Registra una estación nueva (si ya 
     conexion.close()
 
 
-def hay_estac(identificador):  # True si la estación está registrada en la BD
+def hay_estac(identificador):
     conexion = obt_conex()
     cursor = conexion.cursor()
 
@@ -94,7 +91,7 @@ def hay_estac(identificador):  # True si la estación está registrada en la BD
     return fila is not None
 
 
-def obt_estac(identificador):  # Devuelve los datos de una estación como diccionario (None si no existe)
+def obt_estac(identificador):  # Devuelve los datos de una estación como diccionario
     conexion = obt_conex()
     cursor = conexion.cursor()
 
@@ -109,7 +106,7 @@ def obt_estac(identificador):  # Devuelve los datos de una estación como diccio
     return dict(fila)
 
 
-def fij_estado(identificador, estado):  # Cambia el estado: ACTIVE, WATERING, LEAK, OUT_OF_SERVICE o DISCONNECTED
+def fij_estado(identificador, estado):  #Cambia el estado
     conexion = obt_conex()
     cursor = conexion.cursor()
 
@@ -119,7 +116,7 @@ def fij_estado(identificador, estado):  # Cambia el estado: ACTIVE, WATERING, LE
     conexion.close()
 
 
-def desc_todas():  # Pone todas las estaciones como DESCONECTADA (al arrancar, no sabemos su estado real)
+def desc_todas():
     conexion = obt_conex()
     cursor = conexion.cursor()
 
@@ -129,7 +126,7 @@ def desc_todas():  # Pone todas las estaciones como DESCONECTADA (al arrancar, n
     conexion.close()
 
 
-def list_estac():  # Devuelve la lista de todas las estaciones (cada una como diccionario)
+def list_estac():
     conexion = obt_conex()
     cursor = conexion.cursor()
 
@@ -144,5 +141,5 @@ def list_estac():  # Devuelve la lista de todas las estaciones (cada una como di
 # AUXILIARES
 # ---------------------------------------------------------------
 
-def ahora():  # Fecha y hora actual como texto, para guardarla en last_seen
+def ahora(): 
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")

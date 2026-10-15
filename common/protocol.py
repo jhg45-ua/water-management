@@ -25,16 +25,10 @@ EOT = b"\x04"   # fin de la comunicación
 ENQ = b"\x05"   # el cliente pide empezar a hablar
 ACK = b"\x06"   # recibido correctamente
 NACK = b"\x15"  # recibido con error
-
-# Los campos de un mensaje van separados por este carácter.
-# Ejemplo: "AUTH#WS01#Jardin norte" -> operación AUTH, campos WS01 y Jardin norte
 SEPARATOR = "#"
 
 
 def calc_lrc(datos):
-    """Calcula el LRC: el XOR de todos los bytes.
-    Incluimos el ETX en el cálculo (así lo hace el estándar STX/ETX/LRC).
-    Quien envía y quien recibe tienen que calcularlo igual, por eso está aquí."""
     lrc = 0
 
     for byte in datos + ETX:
@@ -42,18 +36,14 @@ def calc_lrc(datos):
 
     return lrc
 
-
+#Convierte un texto en el paquete que se envía por el socket:STX + texto + ETX + LRC
 def armar_msj(texto):
-    """Convierte un texto en el paquete que se envía por el socket:
-    STX + texto + ETX + LRC."""
     datos = texto.encode()
 
     return STX + datos + ETX + bytes([calc_lrc(datos)])
 
-
+#Lee cantidad bytes del socket
 def leer_n(socket, cantidad):
-    """Lee exactamente 'cantidad' bytes del socket.
-    Si el otro lado cierra la conexión, lanza ConnectionError."""
     resultado = b""
 
     while len(resultado) < cantidad:
@@ -68,12 +58,6 @@ def leer_n(socket, cantidad):
 
 
 def recib(socket):
-    """Lee lo siguiente que llegue por el socket y dice de qué tipo es.
-    Devuelve una pareja (tipo, contenido):
-      ("CONTROL", byte)  -> ha llegado ENQ, EOT, ACK o NACK
-      ("MESSAGE", texto) -> ha llegado un mensaje completo y correcto
-      ("BAD", None)      -> ha llegado algo mal formado o con el LRC incorrecto
-    Si se cierra la conexión, lanza ConnectionError."""
     primero = leer_n(socket, 1)
 
     # Si es un carácter de control, ya está
@@ -109,8 +93,6 @@ def recib(socket):
 # ---------------------------------------------------------------
 
 def ini_conex(socket):
-    """Envía el ENQ y espera el ACK del servidor.
-    Devuelve True si el servidor ha aceptado."""
     socket.sendall(ENQ)
 
     tipo, contenido = recib(socket)
@@ -119,8 +101,6 @@ def ini_conex(socket):
 
 
 def env_pet(socket, texto):
-    """Envía una petición y devuelve el texto de la respuesta del servidor.
-    Si algo falla (NACK, mensaje corrupto...) devuelve None."""
     socket.sendall(armar_msj(texto))
 
     # Primero el servidor confirma que ha recibido bien la petición
@@ -141,9 +121,6 @@ def env_pet(socket, texto):
 
 
 def env_pet_reint(socket, texto, intentos=3):
-    """Como env_pet, pero si falla reintenta esperando el doble cada vez
-    (1 s, 2 s, 4 s...) más un poco de azar (jitter) para no saturar.
-    Solo para peticiones idempotentes: repetirlas no debe causar problemas."""
     espera = 1
 
     for intento in range(intentos):

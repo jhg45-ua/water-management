@@ -12,15 +12,14 @@ import threading
 
 from database import db
 
-# Estados posibles de una estación. Son los mismos textos que se guardan en la BD.
+# Estados posibles de una estación.
 ACTIVE = "ACTIVE"                  # Disponible, esperando un riego (verde)
 WATERING = "WATERING"              # Regando (verde parpadeando)
 LEAK = "LEAK"                      # Fuga detectada (rojo)
 OUT_OF_SERVICE = "OUT_OF_SERVICE"  # Parada por orden de Central (naranja)
 DISCONNECTED = "DISCONNECTED"      # Sin conexión con Central (gris)
 
-# Diccionario con todas las estaciones. La clave es el identificador de la estación.
-# Ejemplo: estaciones["WS01"] = {"location": "...", "status": "ACTIVE", ...}
+
 estaciones = {}
 
 # lock para que dos hilos no modifiquen el diccionario a la vez
@@ -28,8 +27,6 @@ lock = threading.Lock()
 
 
 def cargar_bd():
-    """Carga en memoria las estaciones que hay guardadas en la BD.
-    Se llama al arrancar Central, después de marcarlas como desconectadas."""
     with lock:
         estaciones.clear()
 
@@ -39,9 +36,8 @@ def cargar_bd():
                 fila["status"]
             )
 
-
+#AUXILIAR:Datos de una estacion
 def nueva_ent(ubicacion, estado):
-    """Crea los datos de una estación. Es un auxiliar para no repetir el diccionario."""
     return {
         "location": ubicacion,
         "status": estado,
@@ -52,8 +48,6 @@ def nueva_ent(ubicacion, estado):
 
 
 def alta_estac(identificador, ubicacion):
-    """Añade una estación nueva (o actualiza su ubicación si ya estaba).
-    Se usa cuando un Monitor se autentica: la guarda en la BD y en memoria."""
     db.reg_estac(identificador, ubicacion)
 
     with lock:
@@ -67,13 +61,11 @@ def alta_estac(identificador, ubicacion):
 
 
 def hay_estac(identificador):
-    """Devuelve True si Central conoce esa estación."""
     with lock:
         return identificador in estaciones
 
 
 def obt_estado(identificador):
-    """Devuelve el estado de una estación, o None si no existe."""
     with lock:
         if identificador not in estaciones:
             return None
@@ -82,13 +74,10 @@ def obt_estado(identificador):
 
 
 def es_disp(identificador):
-    """Una estación está disponible para regar solo si está ACTIVA:
-    ni regando, ni con fuga, ni parada, ni desconectada."""
     return obt_estado(identificador) == ACTIVE
 
 
 def fij_estado(identificador, estado):
-    """Cambia el estado de una estación, en memoria y en la BD."""
     with lock:
         if identificador not in estaciones:
             return
@@ -106,8 +95,6 @@ def fij_estado(identificador, estado):
 
 
 def act_riego(identificador, operario, caudal, volumen):
-    """Actualiza los datos de un riego en curso (llega cada segundo desde la estación).
-    Solo toca la memoria; no escribimos en la BD cada segundo."""
     with lock:
         if identificador not in estaciones:
             return
