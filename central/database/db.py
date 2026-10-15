@@ -11,7 +11,7 @@ from datetime import datetime
 RUTA_BD = os.path.join(os.path.dirname(__file__), "wm.db")
 
 
-def obtener_conexion():
+def obt_conex():
     """Abre una conexión nueva a la BD.
     Abrimos una por cada operación porque Central usa varios hilos y
     una conexión de SQLite no se debe compartir entre hilos."""
@@ -22,7 +22,7 @@ def obtener_conexion():
     return conexion
 
 
-def inicializar_bd(ruta=None):
+def ini_bd(ruta=None):
     """Crea las tablas si todavía no existen.
     Se llama una sola vez al arrancar Central."""
     global RUTA_BD
@@ -30,7 +30,7 @@ def inicializar_bd(ruta=None):
     if ruta is not None:
         RUTA_BD = ruta
 
-    conexion = obtener_conexion()
+    conexion = obt_conex()
     cursor = conexion.cursor()
 
     # Operarios: solo necesitamos su identificador y un nombre
@@ -59,12 +59,12 @@ def inicializar_bd(ruta=None):
 # OPERARIOS
 # ---------------------------------------------------------------
 
-def agregar_operario(identificador, nombre):
+def alta_oper(identificador, nombre):
     """Da de alta un operario. Si ya existía, le actualiza el nombre."""
-    conexion = obtener_conexion()
+    conexion = obt_conex()
     cursor = conexion.cursor()
 
-    if existe_operario(identificador):
+    if hay_oper(identificador):
         cursor.execute(
             "UPDATE operators SET name = ? WHERE id = ?",
             (nombre, identificador)
@@ -79,10 +79,10 @@ def agregar_operario(identificador, nombre):
     conexion.close()
 
 
-def existe_operario(identificador):
+def hay_oper(identificador):
     """Devuelve True si el operario está dado de alta.
     Central lo usa para validar las peticiones que llegan del FO."""
-    conexion = obtener_conexion()
+    conexion = obt_conex()
     cursor = conexion.cursor()
 
     cursor.execute(
@@ -100,13 +100,13 @@ def existe_operario(identificador):
 # ESTACIONES
 # ---------------------------------------------------------------
 
-def registrar_estacion(identificador, ubicacion):
+def reg_estac(identificador, ubicacion):
     """Registra una estación nueva con su ubicación.
     Si ya estaba registrada, solo actualiza la ubicación y deja su estado como está."""
-    conexion = obtener_conexion()
+    conexion = obt_conex()
     cursor = conexion.cursor()
 
-    if existe_estacion(identificador):
+    if hay_estac(identificador):
         cursor.execute(
             "UPDATE stations SET location = ? WHERE id = ?",
             (ubicacion, identificador)
@@ -122,9 +122,9 @@ def registrar_estacion(identificador, ubicacion):
     conexion.close()
 
 
-def existe_estacion(identificador):
+def hay_estac(identificador):
     """Devuelve True si la estación está registrada en la BD."""
-    conexion = obtener_conexion()
+    conexion = obt_conex()
     cursor = conexion.cursor()
 
     cursor.execute(
@@ -138,9 +138,9 @@ def existe_estacion(identificador):
     return fila is not None
 
 
-def obtener_estacion(identificador):
+def obt_estac(identificador):
     """Devuelve los datos de una estación como diccionario, o None si no existe."""
-    conexion = obtener_conexion()
+    conexion = obt_conex()
     cursor = conexion.cursor()
 
     cursor.execute(
@@ -157,11 +157,11 @@ def obtener_estacion(identificador):
     return dict(fila)
 
 
-def establecer_estado(identificador, estado):
+def fij_estado(identificador, estado):
     """Cambia el estado de una estación y apunta cuándo ocurrió.
     Los estados que usaremos son: ACTIVE, WATERING, LEAK,
     OUT_OF_SERVICE y DISCONNECTED."""
-    conexion = obtener_conexion()
+    conexion = obt_conex()
     cursor = conexion.cursor()
 
     cursor.execute(
@@ -173,11 +173,11 @@ def establecer_estado(identificador, estado):
     conexion.close()
 
 
-def desconectar_todas_estaciones():
+def desc_todas():
     """Pone todas las estaciones como DESCONECTADA.
     Se llama al arrancar Central: hasta que una estación conecte,
     Central no sabe cuál es su estado real."""
-    conexion = obtener_conexion()
+    conexion = obt_conex()
     cursor = conexion.cursor()
 
     cursor.execute(
@@ -189,10 +189,10 @@ def desconectar_todas_estaciones():
     conexion.close()
 
 
-def listar_estaciones():
+def list_estac():
     """Devuelve la lista de todas las estaciones (cada una como diccionario).
     Sirve para llenar el panel al arrancar."""
-    conexion = obtener_conexion()
+    conexion = obt_conex()
     cursor = conexion.cursor()
 
     cursor.execute("SELECT * FROM stations ORDER BY id")

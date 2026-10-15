@@ -15,6 +15,9 @@
 # El LRC es un XOR byte a byte del mensaje. Sirve para que el que recibe
 # compruebe que el mensaje no ha llegado corrupto.
 
+import random
+import time
+
 # Caracteres de control (son bytes sueltos)
 STX = b"\x02"   # inicio del mensaje
 ETX = b"\x03"   # fin del mensaje
@@ -28,7 +31,7 @@ NACK = b"\x15"  # recibido con error
 SEPARATOR = "#"
 
 
-def calcular_lrc(datos):
+def calc_lrc(datos):
     """Calcula el LRC: el XOR de todos los bytes.
     Incluimos el ETX en el cálculo (así lo hace el estándar STX/ETX/LRC).
     Quien envía y quien recibe tienen que calcularlo igual, por eso está aquí."""
@@ -40,15 +43,15 @@ def calcular_lrc(datos):
     return lrc
 
 
-def construir_mensaje(texto):
+def armar_msj(texto):
     """Convierte un texto en el paquete que se envía por el socket:
     STX + texto + ETX + LRC."""
     datos = texto.encode()
 
-    return STX + datos + ETX + bytes([calcular_lrc(datos)])
+    return STX + datos + ETX + bytes([calc_lrc(datos)])
 
 
-def leer_bytes_exactos(socket, cantidad):
+def leer_n(socket, cantidad):
     """Lee exactamente 'cantidad' bytes del socket.
     Si el otro lado cierra la conexión, lanza ConnectionError."""
     resultado = b""
@@ -64,14 +67,14 @@ def leer_bytes_exactos(socket, cantidad):
     return resultado
 
 
-def recibir(socket):
+def recib(socket):
     """Lee lo siguiente que llegue por el socket y dice de qué tipo es.
     Devuelve una pareja (tipo, contenido):
       ("CONTROL", byte)  -> ha llegado ENQ, EOT, ACK o NACK
       ("MESSAGE", texto) -> ha llegado un mensaje completo y correcto
       ("BAD", None)      -> ha llegado algo mal formado o con el LRC incorrecto
     Si se cierra la conexión, lanza ConnectionError."""
-    primero = leer_bytes_exactos(socket, 1)
+    primero = leer_n(socket, 1)
 
     # Si es un carácter de control, ya está
     if primero in (ENQ, EOT, ACK, NACK):
@@ -85,7 +88,7 @@ def recibir(socket):
     datos = b""
 
     while True:
-        byte = leer_bytes_exactos(socket, 1)
+        byte = leer_n(socket, 1)
 
         if byte == ETX:
             break
@@ -93,9 +96,9 @@ def recibir(socket):
         datos += byte
 
     # Después del ETX viene el LRC, que es un solo byte
-    lrc_recibido = leer_bytes_exactos(socket, 1)[0]
+    lrc_recibido = leer_n(socket, 1)[0]
 
-    if lrc_recibido != calcular_lrc(datos):
+    if lrc_recibido != calc_lrc(datos):
         return ("BAD", None)
 
     return ("MESSAGE", datos.decode())
@@ -105,29 +108,29 @@ def recibir(socket):
 # FUNCIONES PARA EL LADO CLIENTE (el que empieza la conversación)
 # ---------------------------------------------------------------
 
-def iniciar_conexion(socket):
+def ini_conex(socket):
     """Envía el ENQ y espera el ACK del servidor.
     Devuelve True si el servidor ha aceptado."""
     socket.sendall(ENQ)
 
-    tipo, contenido = recibir(socket)
+    tipo, contenido = recib(socket)
 
     return tipo == "CONTROL" and contenido == ACK
 
 
-def enviar_peticion(socket, texto):
+def env_pet(socket, texto):
     """Envía una petición y devuelve el texto de la respuesta del servidor.
     Si algo falla (NACK, mensaje corrupto...) devuelve None."""
-    socket.sendall(construir_mensaje(texto))
+    socket.sendall(armar_msj(texto))
 
     # Primero el servidor confirma que ha recibido bien la petición
-    tipo, contenido = recibir(socket)
+    tipo, contenido = recib(socket)
 
     if tipo != "CONTROL" or contenido != ACK:
         return None
 
     # Después llega la respuesta, y la confirmamos con ACK o NACK
-    tipo, respuesta = recibir(socket)
+    tipo, respuesta = recib(socket)
 
     if tipo == "MESSAGE":
         socket.sendall(ACK)
@@ -137,7 +140,26 @@ def enviar_peticion(socket, texto):
     return None
 
 
-def finalizar_conexion(socket):
+def env_pet_reint(socket, texto, intentos=3):
+    """Como env_pet, pero si falla reintenta esperando el doble cada vez
+    (1 s, 2 s, 4 s...) más un poco de azar (jitter) para no saturar.
+    Solo para peticiones idempotentes: repetirlas no debe causar problemas."""
+    espera = 1
+
+    for intento in range(intentos):
+        respuesta = env_pet(socket, texto)
+
+        if respuesta is not None:
+            return respuesta
+
+        if intento < intentos - 1:
+            time.sleep(espera + random.random())
+            espera = espera * 2
+
+    return None
+
+
+def fin_conex(socket):
     """Avisa al servidor de que hemos terminado."""
     socket.sendall(EOT)
 
@@ -146,11 +168,11 @@ def finalizar_conexion(socket):
 # FUNCIONES PARA EL LADO SERVIDOR
 # ---------------------------------------------------------------
 
-def enviar_respuesta(socket, texto):
+def env_resp(socket, texto):
     """Envía una respuesta y espera el ACK del cliente.
     Devuelve True si el cliente la ha recibido bien."""
-    socket.sendall(construir_mensaje(texto))
+    socket.sendall(armar_msj(texto))
 
-    tipo, contenido = recibir(socket)
+    tipo, contenido = recib(socket)
 
     return tipo == "CONTROL" and contenido == ACK
