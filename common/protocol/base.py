@@ -6,6 +6,18 @@ import socket
 class BaseProtocol(ABC):
     """Interfaz base para los protocolos de comunicacion por sockets"""
 
+    def init_connection(self, sock: socket.socket) -> None:
+        """Cliente: realiza el saludo inicial si el protocolo lo requiere"""
+        pass
+
+    def accept_connection(self, sock: socket.socket) -> None:
+        """Servidor: acepta el saludo inicial del cliente si el protocolo lo requiere"""
+        pass
+    
+    def close_connection(self, sock: socket.socket) -> None:
+        """Cliente: avisa del cierre de la sesión si el protocolo lo requiere"""
+        pass
+
     @abstractmethod
     def send_request(self, sock: socket.socket, message: str) -> str:
         """Cliente: envia peticion y recibe respuesta del servidor"""

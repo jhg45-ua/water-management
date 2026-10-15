@@ -53,6 +53,9 @@ def run_server(protocol_class):
 
     print(f"[SERVIDOR] Conexión aceptada desde {client_addr}")
     try:
+        # Saludo inicial si el protocolo lo requiere
+        protocol.accept_connection(client_conn)
+
         # Recibir petición
         request = protocol.receive_request(client_conn)
         print(f"[SERVIDOR] Petición recibida con éxito: '{request}'")
@@ -75,11 +78,17 @@ def run_client(protocol_class):
 
     print("[CLIENTE] Conectado al servidor.")
     try:
+        # Saludo inicial si el protocolo lo requiere (ej: ENQ -> ACK)
+        protocol.init_connection(client_sock)
+
         # Enviar petición y recibir respuesta
         peticion = "AUTH#WS-01#Parque Central"
         print(f"[CLIENTE] Enviando petición: '{peticion}'")
         respuesta = protocol.send_request(client_sock, peticion)
         print(f"[CLIENTE] Respuesta recibida del servidor: '{respuesta}'")
+
+        # Cierre ordenado de la sesión (ej: EOT)
+        protocol.close_connection(client_sock)
     finally:
         client_sock.close()
 

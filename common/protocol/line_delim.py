@@ -17,7 +17,7 @@ class LineDelimitedProtocol(BaseProtocol):
         while True:
             chunk = sock.recv(1)
             if not chunk:
-                raise ConnectionError("El socket se cerró inesperadamente mientras se leía")
+                raise ConnectionError("El socket se cerró mientras se leía")
             if chunk == DELIMITER:
                 break
             buffer.extend(chunk)
@@ -25,20 +25,20 @@ class LineDelimitedProtocol(BaseProtocol):
 
     # Lado Cliente
     def send_request(self, sock: socket.socket, message: str) -> str:
-        """Envía el mensaje directamente con \n y espera la respuesta"""
-        # Enviar petición con delimitador
+        """Envía el mensaje con \n y espera la respuesta"""
         payload = (message + '\n').encode('utf-8')
         sock.sendall(payload)
-        # Recibir respuesta
-        answer = self._recv_line(sock)
-        return answer
-    
-    # Lado Servidor
-    def receive_request(self, sock: socket.socket) -> str:
-        """Espera y lee la petición directamente"""
         return self._recv_line(sock)
     
+    # Lado Servidor
+    def receive_request(self, sock: socket.socket) -> str | None:
+        """Espera y lee la petición directamente. Si el socket se cierra, retorna None"""
+        try:
+            return self._recv_line(sock)
+        except ConnectionError:
+            return None
+    
     def send_response(self, sock: socket.socket, message: str) -> None:
-        """Envía la respuesta con delimitador"""
+        """Envía la respuesta con delimitador \n"""
         payload = (message + '\n').encode('utf-8')
         sock.sendall(payload)

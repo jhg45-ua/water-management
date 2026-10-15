@@ -10,10 +10,10 @@ ACK = b'\x06'   # ACKnowledge (confirmacion)
 NACK = b'\x15'  # Negative ACKnowledge (error / mensaje rechazado)
 
 def compute_lrc(data: bytes) -> bytes:
-    """Calcula el Longitudinal Redundancy Check haciendo XOR de cada byte"""
+    """Calcula el LRC haciendo XOR de los datos + ETX"""
     lrc = 0
-    for byte in data:
-        lrc ^= byte # Operador XOR
+    for byte in data + ETX:  # Incluye ETX en el cálculo
+        lrc ^= byte
     return bytes([lrc])
 
 
@@ -21,7 +21,10 @@ class StandardLRCProtocol(BaseProtocol):
     """
     Protocolo recomendado por el enunciado:
     Empaquetado: <STX><DATA><ETX><LRC>
-    Flujo: ENQ -> ACK -> REQUEST -> ACK -> ANSWER -> ACK -> EOT
+    Flujo de sesión: 
+      - Conectar: ENQ -> ACK
+      - Mensajes (repetible): REQUEST (STX..ETX LRC) -> ACK -> ANSWER (STX..ETX LRC) -> ACK
+      - Desconectar: EOT
     """
 
     def _recv_exact(self, sock: socket.socket, num_bytes: int) -> bytes:
@@ -40,15 +43,21 @@ class StandardLRCProtocol(BaseProtocol):
         lrc = compute_lrc(data_bytes)
         return STX + data_bytes + ETX + lrc
 
-    def _unpack_frame(self, sock: socket.socket) -> str:
+    def _unpack_frame(self, sock: socket.socket, allow_eot: bool = False) -> str | None:
         """
         Lee una trama <STX><DATA><ETX><LRC>, valida el LRC
         y responde automáticamente con ACK o NACK.
+        Si allow_eot es True y recibe EOT, devuelve None (cierre ordenado).
         """
-        # Esperamos obligatoriamente que empiece por <STX>
-        stx = self._recv_exact(sock, 1)
-        if stx != STX:
-            raise ValueError(f"Trama corrupta: se esperaba STX, se recibió {stx}")
+        first_byte = self._recv_exact(sock, 1)
+
+        # Si el servidor está esperando petición y el cliente manda EOT para despedirse:
+        if allow_eot and first_byte == EOT:
+            return None
+
+        if first_byte != STX:
+            sock.sendall(NACK)
+            raise ValueError(f"Trama corrupta: se esperaba STX, se recibió {first_byte}")
 
         # Leemos byte a byte el DATA hasta encontrar <ETX>
         payload = bytearray()
@@ -71,48 +80,49 @@ class StandardLRCProtocol(BaseProtocol):
         sock.sendall(ACK)
         return payload.decode('utf-8')
 
-    # Lado Cliente
-    def send_request(self, sock: socket.socket, message: str) -> str:
-        """Flujo: ENQ -> ACK -> ENVÍA REQ -> ACK -> RECIBE ANS -> ACK -> EOT"""
-        # Saludo incial: enviar ENQ y esperar ACK
+    # -----------------------------
+    # GESTIÓN DEL CICLO DE SESIÓN
+    # -----------------------------
+    def init_connection(self, sock: socket.socket) -> None:
+        """Cliente: envía ENQ y espera ACK del servidor"""
         sock.sendall(ENQ)
-        if self._recv_exact(sock, 1) != ACK:
-            raise ConnectionError("El servidor rechazó el ENQ inicial")
+        ack = self._recv_exact(sock, 1)
+        if ack != ACK:
+            raise ConnectionError(f"El servidor rechazó el ENQ inicial (recibido: {ack})")
 
-        # Enviar petición empaquetada y esperar ACK
-        sock.sendall(self._pack_frame(message))
-        if self._recv_exact(sock, 1) != ACK:
-            raise ConnectionError("El servidor rechazó la trama (LRC o formato inválido)")
-
-        # Recibir la respuesta del servidor (valida LRC y envía ACK)
-        answer = self._unpack_frame(sock)
-
-        # Cerrar el ciclo enviando EOT
-        sock.sendall(EOT)
-        return answer
-
-    # Lado Servidor
-    def receive_request(self, sock: socket.socket) -> str:
-        """Espera ENQ -> responde ACK -> recibe REQ (y responde ACK)"""
-        # Esperar ENQ del cliente
+    def accept_connection(self, sock: socket.socket) -> None:
+        """Servidor: espera ENQ del cliente y responde ACK"""
         enq = self._recv_exact(sock, 1)
         if enq != ENQ:
             sock.sendall(NACK)
-            raise ValueError(f"Se esperaba ENQ, recibido: {enq}")
+            raise ValueError(f"Se esperaba ENQ inicial, recibido: {enq}")
         sock.sendall(ACK)
 
-        #  Recibir la petición
-        request = self._unpack_frame(sock)
-        return request
+    def close_connection(self, sock: socket.socket) -> None:
+        """Cliente: avisa del cierre enviando EOT"""
+        sock.sendall(EOT)
+
+    # -----------------------------
+    # INTERCAMBIO DE MENSAJES
+    # -----------------------------
+    def send_request(self, sock: socket.socket, message: str) -> str:
+        """Cliente: envía petición empaquetada, espera ACK, y recibe la respuesta"""
+        sock.sendall(self._pack_frame(message))
+        ack = self._recv_exact(sock, 1)
+        if ack != ACK:
+            raise ConnectionError(f"El servidor rechazó la trama con NACK (recibido: {ack})")
+
+        # Recibe respuesta del servidor (valida LRC y responde ACK)
+        answer = self._unpack_frame(sock, allow_eot=False)
+        return answer
+
+    def receive_request(self, sock: socket.socket) -> str | None:
+        """Servidor: recibe la petición (o None si el cliente envió EOT)"""
+        return self._unpack_frame(sock, allow_eot=True)
 
     def send_response(self, sock: socket.socket, message: str) -> None:
-        """Envía ANS -> espera ACK -> espera EOT"""
-        # Enviar respuesta empaquetada
+        """Servidor: envía respuesta empaquetada y espera ACK del cliente."""
         sock.sendall(self._pack_frame(message))
-        if self._recv_exact(sock, 1) != ACK:
-            raise ConnectionError("El cliente no confirmó la respuesta recibida (NACK)")
-        
-        # Esperar que el cliente cierre con EOT
-        eot = self._recv_exact(sock, 1)
-        if eot != EOT:
-            raise ValueError(f"Se esperaba EOT para terminar el ciclo, recibido: {eot}")
+        ack = self._recv_exact(sock, 1)
+        if ack != ACK:
+            raise ConnectionError(f"El cliente no confirmó la respuesta recibida (recibido: {ack})")

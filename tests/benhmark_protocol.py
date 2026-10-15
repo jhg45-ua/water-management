@@ -54,6 +54,9 @@ def test_protocol(protocol_class, name):
 
         conn, _ = srv.accept()
         try:
+            # Saludo inicial antes de recibir los miles de mensajes
+            proto.accept_connection(conn)
+
             for _ in range(NUM_REQUESTS):
                 req = proto.receive_request(conn)
                 proto.send_response(conn, "AUTH_OK#WS-01#Bienvenido")
@@ -68,11 +71,17 @@ def test_protocol(protocol_class, name):
         cli.connect((HOST, PORT))
 
         try:
+            # Saludo inicial una sola vez para toda la conexión
+            proto.init_connection(cli)
+
             t_ini = time.perf_counter()
             for i in range(NUM_REQUESTS):
                 msg = f"AUTH#WS-{i:03d}#Parque Central"
                 _ = proto.send_request(cli, msg)
             t_fin = time.perf_counter()
+
+            # Despedida al terminar todas las peticiones
+            proto.close_connection(cli)
 
             total = t_fin - t_ini
             results['time'] = total
@@ -105,8 +114,8 @@ if __name__ == "__main__":
         print("=" * 68)
         print(f"{'PROTOCOLO':<22} | {'TIEMPO':<10} | {'LATENCIA':<12} | {'THROUGHPUT'}")
         print("=" * 68)
-        print(f"{'1. Standard LRC':<22} | {res_lrc['time']:<7.4f} s | {res_lrc['latency']:<9.4f} ms | {res_lrc['throughput']:<8.2f} req/s")
-        print(f"{'2. Line Delimited':<22} | {res_line['time']:<7.4f} s | {res_line['latency']:<9.4f} ms | {res_line['throughput']:<8.2f} req/s")
+        print(f"{'   Standard LRC':<22} | {res_lrc['time']:<7.4f} s | {res_lrc['latency']:<9.4f} ms | {res_lrc['throughput']:<8.2f} req/s")
+        print(f"{'   Line Delimited':<22} | {res_line['time']:<7.4f} s | {res_line['latency']:<9.4f} ms | {res_line['throughput']:<8.2f} req/s")
     else:
         protocol_class = PROTOCOLS[selected_protocol]
         res_selected = test_protocol(protocol_class, selected_protocol)
