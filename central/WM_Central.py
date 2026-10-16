@@ -32,7 +32,12 @@ if len(sys.argv) > 2:
 ruta_bd = None
 if len(sys.argv) > 3:
     ruta_bd = sys.argv[3]
-
+# Protocolo de sockets opcional: 'lrc' (por defecto) o 'line'
+protocolo_nombre = "lrc"
+if len(sys.argv) > 4:
+    protocolo_nombre = sys.argv[4].lower()
+protocol_class = socket_server.PROTOCOLS.get(protocolo_nombre, socket_server.StandardLRCProtocol)
+print(f"[CENTRAL] Protocolo de sockets seleccionado: '{protocol_class.__name__}'")
 #BASE DE DATOS Y EL ESTADO
 
 print("[CENTRAL] Arrancando la Central...")
@@ -55,8 +60,9 @@ for id_estacion, datos in estaciones.items():
 
 #SERVICIOS
 
-
-hilo_sockets = threading.Thread(target=socket_server.ini_servidor, args=(puerto,), daemon=True)
+# Servidor de sockets
+# Va en un hilo aparte porque se queda esperando conexiones para siempre.
+hilo_sockets = threading.Thread(target=socket_server.ini_servidor, args=(puerto,protocol_class), daemon=True)
 hilo_sockets.start()
 # PENDIENTE: aquí se arrancará el hilo de Kafka (direccion_kafka) y el del panel.
 print("[CENTRAL] Central en marcha. Pulsa Ctrl+C para pararla.")
