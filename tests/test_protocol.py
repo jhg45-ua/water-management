@@ -99,8 +99,11 @@ if __name__ == "__main__":
     # Ejecutamos el servidor en un hilo secundario y el cliente en otro
     hilo_servidor = threading.Thread(target=run_server, args=(protocol_class,))
     hilo_cliente = threading.Thread(target=run_client, args=(protocol_class,))
+
     hilo_servidor.start()
     hilo_cliente.start()
+
     hilo_servidor.join()
     hilo_cliente.join()
+    
     print("\n¡Prueba completada con éxito!")
