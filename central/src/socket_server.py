@@ -15,8 +15,16 @@ import socket
 import threading
 import time
 
-from common import protocol
+from common.protocol.standard_lrc import StandardLRCProtocol
+from common.protocol.line_delim import LineDelimitedProtocol
 from src import state
+
+SEPARATOR = "#"
+
+PROTOCOLS = {
+    "lrc": StandardLRCProtocol,
+    "line": LineDelimitedProtocol
+}
 
 
 MAX_MON = 50        
@@ -29,7 +37,7 @@ def reg(texto):
 
 
 #Abre puerto , espera a que lleguen y si llega crea hilo
-def ini_servidor(puerto):
+def ini_servidor(puerto, protocol_class=StandardLRCProtocol):
     servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # Esto permite reiniciar Central sin esperar a que se libere el puerto
@@ -56,43 +64,51 @@ def ini_servidor(puerto):
 
         reg("[SOCKETS] Nueva conexión desde " + str(direccion))
 
-        hilo = threading.Thread(target=atender_mon, args=(conexion,), daemon=True)
+        hilo = threading.Thread(target=atender_mon, args=(conexion, protocol_class), daemon=True)
         hilo.start()
 
 
-def atender_mon(conexion):
+def atender_mon(conexion, protocol_class=StandardLRCProtocol):
     id_estacion = None
+    protocol = protocol_class()
 
     try:
         # 1.ENQ
         conexion.settimeout(TIEMPO_ESPERA)
-        tipo, contenido = protocol.recib(conexion)
+        # tipo, contenido = protocol.recib(conexion)
+        protocol.accept_connection(conexion)
 
-        if tipo != "CONTROL" or contenido != protocol.ENQ:
-            conexion.sendall(protocol.NACK)
-            return
+        # if tipo != "CONTROL" or contenido != protocol.ENQ:
+        #     conexion.sendall(protocol.NACK)
+        #     return
 
-        conexion.sendall(protocol.ACK)
+        # conexion.sendall(protocol.ACK)
         conexion.settimeout(None)
 
         # 2.Recibir peticiones hasta EOT o se cierre la conexión
         while True:
-            tipo, contenido = protocol.recib(conexion)
+            # tipo, contenido = protocol.recib(conexion)
+            peticion = protocol.receive_request(conexion)
 
-            # Si llega EOT, el Monitor se despide
-            if tipo == "CONTROL" and contenido == protocol.EOT:
+            if peticion is None:
+                # El cliente ha enviado EOT (fin de comunicación) o ha cerrado
                 break
 
+            # Si llega EOT, el Monitor se despide
+            # if tipo == "CONTROL" and contenido == protocol.EOT:
+            #     break
+
             # Si el mensaje llega mal (LRC incorrecto) o no es un mensaje, pedimos que lo repita
-            if tipo != "MESSAGE":
-                conexion.sendall(protocol.NACK)
-                continue
+            # if tipo != "MESSAGE":
+            #     conexion.sendall(protocol.NACK)
+            #     continue
 
             # Mensaje bien recibido: confirmamos, procesamos y contestamos
-            conexion.sendall(protocol.ACK)
+            # conexion.sendall(protocol.ACK)
             conexion.settimeout(TIEMPO_ESPERA)
-            respuesta, id_estacion = proc_pet(contenido, id_estacion)
-            protocol.env_resp(conexion, respuesta)
+            respuesta, id_estacion = proc_pet(peticion, id_estacion)
+            # protocol.env_resp(conexion, respuesta)
+            protocol.send_response(conexion, respuesta)
             conexion.settimeout(None)
 
     except (ConnectionError, OSError):
@@ -108,7 +124,7 @@ def atender_mon(conexion):
 
 #Prepara respuesta
 def proc_pet(texto, id_estacion):
-    partes = texto.split(protocol.SEPARATOR)
+    partes = texto.split(SEPARATOR)
     operacion = partes[0]
 
     #AUTH#id#ubicacion
