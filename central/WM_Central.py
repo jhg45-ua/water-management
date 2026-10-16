@@ -1,11 +1,3 @@
-# WM_Central.py
-# Programa principal de la Central de WaterManagement.
-# Es lo primero que se ejecuta: prepara la base de datos, carga las estaciones
-# y pone en marcha los servicios (de momento, el servidor de sockets).
-#
-# Uso:      python WM_Central.py <puerto> [ip_kafka:puerto_kafka] [ruta_bd]
-# Ejemplo:  python WM_Central.py 5000 localhost:9092
-
 import os
 import sys
 import threading
@@ -33,7 +25,6 @@ except ValueError:
     print("El puerto tiene que ser un número")
     sys.exit(1)
 
-# Estos dos son opcionales: si no se indican, se usan valores por defecto
 
 direccion_kafka = "localhost:9092"
 if len(sys.argv) > 2:
@@ -41,15 +32,19 @@ if len(sys.argv) > 2:
 ruta_bd = None
 if len(sys.argv) > 3:
     ruta_bd = sys.argv[3]
+
 #BASE DE DATOS Y EL ESTADO
+
 print("[CENTRAL] Arrancando la Central...")
-# Creamos las tablas si no existen
+
 db.ini_bd(ruta_bd)
+
 #Alta a los operarios
+
 for id_operario, nombre in operarios:
     db.alta_oper(id_operario, nombre)
 
-# Cargar las estaciones guardadas en la BD y se ponen todas en desconectadas,porque hasta que no conecten no sabemos cómo están
+
 
 state.cargar_bd()
 state.desc_todas()
@@ -60,8 +55,7 @@ for id_estacion, datos in estaciones.items():
 
 #SERVICIOS
 
-# Servidor de sockets
-# Va en un hilo aparte porque se queda esperando conexiones para siempre.
+
 hilo_sockets = threading.Thread(target=socket_server.ini_servidor, args=(puerto,), daemon=True)
 hilo_sockets.start()
 # PENDIENTE: aquí se arrancará el hilo de Kafka (direccion_kafka) y el del panel.
@@ -69,7 +63,6 @@ print("[CENTRAL] Central en marcha. Pulsa Ctrl+C para pararla.")
 
 #MANTENER LA CENTRAL ACTIVA
 
-#Programa principal se queda aquí esperando.
 try:
     while True:
         time.sleep(1)

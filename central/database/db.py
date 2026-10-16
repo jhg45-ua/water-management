@@ -1,6 +1,3 @@
-# db.py
-# Aquí está todo lo que Central necesita hacer con la base de datos SQLite.
-# El resto del código nunca escribe SQL: siempre llama a las funciones de este fichero.
 import os
 import sqlite3
 from datetime import datetime

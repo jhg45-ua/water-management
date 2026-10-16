@@ -1,13 +1,3 @@
-# state.py
-# Aquí guardamos el estado EN VIVO de todas las estaciones de riego.
-# La base de datos guarda lo que debe sobrevivir a un reinicio; este fichero guarda
-# lo que cambia cada segundo (estado, caudal, volumen...) y lo que lee el panel.
-#
-# (Es una caché en memoria con escritura directa a la BD: write-through.)
-#
-# Central tiene varios hilos (sockets, Kafka, panel) que leen y escriben aquí
-# a la vez, así que todo se protege con un Lock para que no se pisen.
-
 import threading
 
 from database import db

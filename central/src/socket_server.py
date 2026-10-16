@@ -1,16 +1,3 @@
-# socket_server.py
-# Servidor de sockets de Central. Aquí se conectan los Monitores (WM_WS_M) de las estaciones.
-# Cada Monitor abre UNA conexión que se mantiene abierta mientras la estación está viva:
-#   - Al conectar, se autentica con AUTH.
-#   - Después puede avisar de una fuga (LEAK) o de que se ha recuperado (RECOVERED).
-#   - Si la conexión se cae, Central pone la estación como DESCONECTADA.
-#
-# Mensajes que entiende (los campos van separados por #):
-#   AUTH#id#ubicacion  -> registra/autentica la estación
-#   LEAK#id            -> la estación tiene una fuga
-#   RECOVERED#id       -> la estación se ha recuperado
-# Respuestas posibles: "OK" o "KO#motivo"
-
 import socket
 import threading
 import time

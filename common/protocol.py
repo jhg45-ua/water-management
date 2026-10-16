@@ -1,20 +1,3 @@
-# protocol.py
-# Aquí está el protocolo de sockets que usan todos los módulos (Central, Monitor y Engine).
-# Sigue el flujo recomendado en el enunciado:
-#
-#   Cliente                          Servidor
-#   -------                          --------
-#   ENQ                 ------->
-#                       <-------     ACK / NACK
-#   STX REQUEST ETX LRC ------->
-#                       <-------     ACK / NACK
-#                       <-------     STX ANSWER ETX LRC
-#   ACK / NACK          ------->
-#   EOT                 ------->     (y se cierra la conexión)
-#
-# El LRC es un XOR byte a byte del mensaje. Sirve para que el que recibe
-# compruebe que el mensaje no ha llegado corrupto.
-
 import random
 import time
 
