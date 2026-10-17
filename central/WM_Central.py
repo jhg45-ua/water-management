@@ -4,12 +4,15 @@ import threading
 import time
 
 
+
 carpeta_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(carpeta_raiz)
 
 from database import db
 from src import state
 from src import socket_server
+from src import kafka_handlers
+
 
 # Operarios que se dan de alta al arrancar. Si hace falta alguno más, se añade aquí.
 operarios = [("OP01", "Operario 1"),("OP02", "Operario 2"),("OP03", "Operario 3"),]
@@ -62,9 +65,12 @@ for id_estacion, datos in estaciones.items():
 
 # Servidor de sockets
 # Va en un hilo aparte porque se queda esperando conexiones para siempre.
+
 hilo_sockets = threading.Thread(target=socket_server.ini_servidor, args=(puerto,protocol_class), daemon=True)
 hilo_sockets.start()
-# PENDIENTE: aquí se arrancará el hilo de Kafka (direccion_kafka) y el del panel.
+
+# Aquí se arrancará el hilo de Kafka (direccion_kafka) y el del panel.
+kafka_handlers.iniciar_kafka(direccion_kafka)
 print("[CENTRAL] Central en marcha. Pulsa Ctrl+C para pararla.")
 
 #MANTENER LA CENTRAL ACTIVA
