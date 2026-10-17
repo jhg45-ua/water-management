@@ -13,6 +13,7 @@ from src import state
 from src import socket_server
 from src import kafka_handlers
 from src import commands
+from src.panel import app as panel
 
 
 # Operarios que se dan de alta al arrancar. Si hace falta alguno más, se añade aquí.
@@ -74,6 +75,8 @@ hilo_sockets.start()
 kafka_handlers.iniciar_kafka(direccion_kafka)
 threading.Thread(target=commands.menu_cons, daemon=True).start()
 print("[CENTRAL] Central en marcha. Pulsa Ctrl+C para pararla.")
+puerto_panel = int(os.environ.get("PORT", 8080))
+threading.Thread(target=panel.ini_panel, args=(puerto_panel,), daemon=True).start()
 
 #MANTENER LA CENTRAL ACTIVA
 
