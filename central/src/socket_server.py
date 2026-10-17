@@ -5,6 +5,7 @@ import time
 from common.protocol.standard_lrc import StandardLRCProtocol
 from common.protocol.line_delim import LineDelimitedProtocol
 from src import state
+from src import kafka_handlers
 
 SEPARATOR = "#"
 
@@ -98,12 +99,12 @@ def atender_mon(conexion, protocol_class=StandardLRCProtocol):
             protocol.send_response(conexion, respuesta)
             conexion.settimeout(None)
 
-    except (ConnectionError, OSError):
+    except (ConnectionError, OSError,ValueError):
         pass
 
     finally:
         if id_estacion is not None:
-            state.fij_estado(id_estacion, state.DISCONNECTED)
+            kafka_handlers.estacion_desconectada(id_estacion)
             reg("[SOCKETS] " + id_estacion + " desconectada")
 
         conexion.close()
@@ -145,7 +146,7 @@ def proc_pet(texto, id_estacion):
             return "KO#Id incorrecto", id_estacion
 
         if operacion == "LEAK":
-            state.fij_estado(id_estacion, state.LEAK)
+            kafka_handlers.estacion_con_fuga(id_estacion)
             reg("[SOCKETS] AVERÍA en " + id_estacion + ": fuga detectada")
         else:
             state.fij_estado(id_estacion, state.ACTIVE)
