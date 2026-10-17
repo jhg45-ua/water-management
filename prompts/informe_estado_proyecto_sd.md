@@ -1,131 +1,123 @@
 # Informe de Estado del Proyecto: Water Management Network
 **Asignatura:** Sistemas Distribuidos 2026/2027  
-**Fecha de actualización:** Viernes, 16 de octubre de 2026 (11:50h)  
+**Fecha de actualización:** Sábado, 17 de octubre de 2026 (20:07h)  
 **Fecha objetivo de cierre:** Viernes, 23 de octubre de 2026 (Entrega oficial: semana del 26 de octubre)  
 **Equipo:** Persona A (Héctor — Central y Nube) · Persona B (Julián — Estaciones, Operario y Laboratorio)
 
 ---
 
-## 1. Resumen Ejecutivo a Fecha de Hoy (16 de Octubre)
+## 1. Resumen Ejecutivo a Fecha de Hoy (17 de Octubre — 20:07h)
 
-En los últimos dos días (14 al 16 de octubre) el proyecto ha dado un salto importante, pasando de un repositorio vacío a tener **toda la capa de comunicaciones por Sockets TCP, persistencia SQLite y autenticación Monitor $\leftrightarrow$ Central operativa**.
+Hoy se ha producido un **avance masivo en el repositorio remoto (`origin/dev` y `origin/dev-hector`)**: Héctor ha subido **18 nuevos commits** (hasta `085d994`) con los que **toda la parte de `WM_Central`, el contrato de Kafka en `/common`, el Panel Web en Flask y la Dockerización de Central + Kafka están al 100 % implementados**.
 
-* **Lo que ya funciona:**
-  1. Arquitectura de protocolos de sockets en `/common/protocol/` con dos implementaciones intercambiables ([`StandardLRCProtocol`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/standard_lrc.py#L20-L128) con `<STX><DATA><ETX><LRC>` y [`LineDelimitedProtocol`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/line_delim.py#L6-L44)) junto con sus tests y benchmarks ([`test_protocol.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/tests/test_protocol.py), [`benhmark_protocol.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/tests/benhmark_protocol.py)).
-  2. Núcleo de `WM_Central` ([`WM_Central.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/WM_Central.py), [`db.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/database/db.py), [`state.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/state.py), [`socket_server.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/socket_server.py)): inicializa SQLite, resetea las estaciones a `DISCONNECTED` al arrancar, mantiene el estado en memoria de forma *thread-safe* y atiende por sockets las peticiones `AUTH`, `LEAK` y `RECOVERED`.
-  3. Primera versión funcional de [`WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py) (en tu entorno local, pendiente de `git add`/`commit`): conecta con `WM_Central`, realiza el handshake y autentica la estación de riego.
-* **Principal cuello de botella actual:**
-  * **La capa de Apache Kafka está al 0 %** ([`common/topics.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/topics.py), [`common/messages.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/messages.py) y [`central/src/kafka_handlers.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/kafka_handlers.py) son archivos de 0 bytes). Mañana **17 de octubre** vence el Hito 3 del calendario (*"Un riego completo de principio a fin en local"*).
+* **Lo que ya está 100 % implementado en el repositorio:**
+  1. **Contrato completo en `/common`**:
+     * **Sockets (`/common/protocol/`)**: [`BaseProtocol`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/base.py), [`StandardLRCProtocol`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/standard_lrc.py) (`<STX><DATA><ETX><LRC>`) y [`LineDelimitedProtocol`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/line_delim.py), con tests y benchmarks.
+     * **Kafka (`common/topics.py` y `common/messages.py` en `origin/dev`)**: Definidos los 4 topics (`wm.fo.requests`, `wm.fo.notifications`, `wm.ws.commands`, `wm.ws.telemetry`) y todos los constructores/serializadores JSON (`msj_pet`, `msj_notif`, `msj_orden`, `msj_telem`).
+  2. **Sistema Central completo (`/central` en `origin/dev`)**:
+     * Persistencia SQLite (`db.py`) y caché de estado *thread-safe* con cálculo de resúmenes de riego (`state.py`).
+     * Servidor de sockets (`socket_server.py`) conectado con Kafka para cortar riegos automáticamente ante fugas (`LEAK`) o desconexiones.
+     * Manejadores de Kafka (`kafka_handlers.py`) usando `kafka-python` con reconexión automática, reserva de estaciones, validación de operarios y retransmisión de telemetría.
+     * Menú interactivo de consola (`commands.py`) y **Panel Web en Flask** (`panel/app.py` + `templates/index.html`) con tarjetas en los 5 colores del enunciado, parpadeo CSS en verde durante el riego y botones para órdenes individuales o globales (`ALL`).
+     * `central/Dockerfile`, `central/requirements.txt` (`kafka-python`, `flask`) y `central/docker-compose.yml` (con `apache/kafka:3.8.1` en modo KRaft + `central`).
+  3. **Monitor de Estación completo ([`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py) en `dev-julian`)**:
+     * Autenticación contra Central, servidor local para Engine, ping cada 1s (`CHECK_HEALTH`), alerta `LEAK#<id_ws>` y recuperación `RECOVERED#<id_ws>`.
+
+* **Lo que queda pendiente (100 % desbloqueado, lado Persona B — Julián):**
+  1. Sincronizar ramas (`origin/dev` $\leftrightarrow$ `dev-julian`).
+  2. Implementar **`ws/engine/WM_WS_E.py`** (Engine).
+  3. Implementar **`operator/src/WM_FO.py`** (Field Operator).
+  4. Crear los Dockerfiles de laboratorio (`ws/Dockerfile` y `operator/Dockerfile`) y el script generador del log `<DNI>SD_Test.log`.
 
 ---
 
-## 2. Auditoría de Ramas Git y Entorno Local
-
-### 2.1. Estado de las Ramas (Locales vs. Remotas en GitHub)
+## 2. Auditoría de Ramas Git y Sincronización
 
 | Rama | Último Commit | Estado / Sincronización | Contenido Principal |
 | :--- | :--- | :--- | :--- |
-| **`origin/main`** / **`main`** | `e7d3646` (23 sep) | Sincronizadas | Esqueleto inicial intacto (aún no se ha volcado `dev` a `main`). |
-| **`origin/dev`** | `5a1a456` (16 oct, 11:06) | Tu rama local `dev` está 3 commits por detrás (`18ec3cb`). | Contiene la fusión de PR #1 (protocolos de sockets de Julián), el núcleo de Central de Héctor y el PR #3 (selección dinámica de protocolo y eliminación de `common/protocol.py` duplicado). |
-| **`origin/dev-julian`** | `859a82b` (16 oct, 11:07) | Tu rama local `dev-julian` (`06206e6`) tiene **exactamente el mismo código** (solo le faltan 2 commits de merge sin cambios de ficheros). | Todo el paquete `common/protocol/`, suite `tests/` y refactor de `WM_Central` / `socket_server` para elegir protocolo (`lrc` o `line`). |
-| **`origin/dev-hector`** | `3b090a2` (16 oct, 11:46) | Tu copia local `dev-hector` sigue en `e7d3646` (23 commits por detrás). | Héctor acaba de hacer merge de `dev` en su rama (`3b090a2`), más un commit previo (`30d1095`) donde eliminó comentarios de cabecera en 4 ficheros de `central/`. |
+| **`origin/main`** / **`main`** | `e7d3646` (23 sep) | Sincronizadas | Esqueleto inicial intacto. |
+| **`origin/dev`** y **`origin/dev-hector`** | `085d994` (17 oct) | **18 commits por delante** de tu rama `dev-julian` (y tu `dev` local está 23 commits por detrás). | Contiene todo el cierre de `central/` (`kafka_handlers.py`, `commands.py`, `panel/`, `Dockerfile`, `docker-compose.yml`) y el contrato Kafka (`common/topics.py`, `common/messages.py`). **Aún no tiene tu commit `3ae3303` (`WM_WS_M.py`)**. |
+| **`origin/dev-julian`** / **`dev-julian`** | `3ae3303` (16 oct) | Sincronizadas entre sí, pero **aún no tienen los 18 commits nuevos de `origin/dev`**. | Tiene [`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py) y [`prompts/informe_estado_proyecto_sd.md`](file:///Users/julianhinojosagil/Documents/Dev/water-management/prompts/informe_estado_proyecto_sd.md). |
 
-### 2.2. Archivos Locales sin Seguimiento (*Untracked* en tu Workspace)
-En tu directorio de trabajo actual (rama `dev-julian`) existen dos archivos nuevos que aún no se han subido a Git:
-1. **[`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py)** (69 líneas): Implementación inicial del Monitor de la estación de riego (conexión y autenticación contra Central).
-2. **`central/database/wm.db`**: Base de datos SQLite generada al probar `WM_Central.py`.
-   > [!TIP]
-   > En [`.gitignore`](file:///Users/julianhinojosagil/Documents/Dev/water-management/.gitignore#L12-L15) están ignorados `*.sqlite` y `*.sqlite3`, pero no `*.db`. Conviene añadir `*.db` a `.gitignore` para no subir accidentalmente la base de datos local al repositorio.
+> [!IMPORTANT]
+> **Acción inmediata en Git:** Tu rama `dev-julian` y `origin/dev` han divergido sin conflictos (tú editaste `ws/monitor/` y `prompts/`; Héctor editó `common/topics.py`, `common/messages.py` y `central/`). Debes hacer `git merge origin/dev` en tu rama `dev-julian` para disponer localmente de `topics.py`, `messages.py` y todo el módulo `central/` actualizado, y después subir/mezclar `dev-julian` en `dev`.
 
 ---
 
-## 3. Estado Detallado por Componente frente al Enunciado
+## 3. Especificación del Contrato Kafka (Ya implementado en `origin/dev`)
 
-### 3.1. Módulo Compartido (`/common` y `/tests`) — *Tarea Conjunta*
+Para programar `WM_WS_E.py` y `WM_FO.py`, debes usar directamente la librería **`kafka-python`** y las funciones que Héctor ha dejado listas en `common/topics.py` y `common/messages.py`:
 
-| Archivo | Estado | Análisis Técnico |
-| :--- | :---: | :--- |
-| [`common/protocol/base.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/base.py) | **100 %** | Define la interfaz [`BaseProtocol`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/base.py#L6-L34) con métodos de sesión (`init_connection`, `accept_connection`, `close_connection`) y mensajería (`send_request`, `receive_request`, `send_response`). |
-| [`common/protocol/standard_lrc.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/standard_lrc.py) | **100 %** | Implementa [`StandardLRCProtocol`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/standard_lrc.py#L20-L128) fiel al diagrama de la pág. 12 del PDF: saludo `ENQ` $\rightarrow$ `ACK`, empaquetado `<STX><DATA><ETX><LRC>` con XOR byte a byte ([`compute_lrc`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/standard_lrc.py#L12-L17)), confirmación `ACK`/`NACK` y despedida `EOT`. |
-| [`common/protocol/line_delim.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/line_delim.py) | **100 %** | Implementa [`LineDelimitedProtocol`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/protocol/line_delim.py#L6-L44) delimitado por `\n` para comparar rendimiento frente a LRC. |
-| [`tests/test_protocol.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/tests/test_protocol.py) y [`benhmark_protocol.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/tests/benhmark_protocol.py) | **100 %** | Pruebas funcionales cliente/servidor en hilos y benchmark de latencia y throughput con 2000 peticiones. |
-| [`common/topics.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/topics.py) | **0 % (Vacío)** | **Crítico:** Falta definir las constantes de topics de Kafka (ej. peticiones de riego, comandos a WS, telemetría, notificaciones a FO). |
-| [`common/messages.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/messages.py) | **0 % (Vacío)** | **Crítico:** Falta definir el contrato de constructores/validadores JSON para los eventos de Kafka. |
+### 3.1. Topics (`common/topics.py`)
+* `topics.PETICIONES = "wm.fo.requests"` — Operario (`WM_FO`) $\rightarrow$ Central.
+* `topics.NOTIF_FO = "wm.fo.notifications"` — Central $\rightarrow$ Operario (`WM_FO`).
+* `topics.ORDENES = "wm.ws.commands"` — Central $\rightarrow$ Engine (`WM_WS_E`).
+* `topics.TELEMETRIA = "wm.ws.telemetry"` — Engine (`WM_WS_E`) $\rightarrow$ Central.
 
----
+### 3.2. Mensajes JSON (`common/messages.py`)
 
-### 3.2. Core System (`/central`) — *Persona A (Héctor)*
+| Dirección | Función constructora | Estructura JSON generada |
+| :--- | :--- | :--- |
+| **FO $\rightarrow$ Central** | `msj_pet(operario, ws, duracion)` | `{"type": "REQUEST", "operator": "OP01", "ws": "WS01", "duration": 30}` |
+| **Central $\rightarrow$ FO** | `msj_notif(operario, ws, evento, texto, caudal, volumen)` | `{"type": "NOTIFY", "operator": "OP01", "ws": "WS01", "event": "RECEIVED\|AUTHORIZED\|DENIED\|PROGRESS\|FINISHED\|LEAK_STOP", "text": "...", "flow": 10, "volume": 50}` |
+| **Central $\rightarrow$ Engine** | `msj_orden(ws, accion, operario, duracion)` | `{"type": "COMMAND", "ws": "WS01\|ALL", "action": "START\|STOP\|BLOCK\|ACTIVATE", "operator": "OP01", "duration": 30}` |
+| **Engine $\rightarrow$ Central** | `msj_telem(ws, operario, caudal, volumen, final)` | `{"type": "TELEMETRY", "ws": "WS01", "operator": "OP01", "flow": 12.5, "volume": 25.0, "final": false\|true}` |
 
-| Archivo | Estado | Análisis Técnico |
-| :--- | :---: | :--- |
-| [`central/database/db.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/database/db.py) | **100 %** | Crea tablas `operators` y `stations` ([`ini_bd`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/database/db.py#L21-L32)). Gestiona alta de operarios, registro de estaciones, actualización de estados y reseteo masivo a `DISCONNECTED` ([`desc_todas`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/database/db.py#L119-L126)). Abre una conexión por operación para evitar conflictos entre hilos en SQLite. |
-| [`central/src/state.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/state.py) | **100 %** | Caché en memoria protegida con `threading.Lock` y actualización *write-through* a BD. Contempla los 5 estados del enunciado: `ACTIVE`, `WATERING`, `LEAK`, `OUT_OF_SERVICE`, `DISCONNECTED`. Incluye [`act_riego`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/state.py#L97-L105) para caudal, volumen y operario. |
-| [`central/src/socket_server.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/socket_server.py) | **95 %** | Servidor TCP multihilo con límite de 50 monitores concurrentes (`BoundedSemaphore`). Procesa `AUTH#id#ubicacion`, `LEAK#id` y `RECOVERED#id`. Cuando un Monitor cierra el socket o cae, el bloque `finally` pasa la estación a `DISCONNECTED`. *(Falta: cuando llega `LEAK#id` durante un riego en curso, notificar por Kafka el corte inmediato a todos los módulos según el punto 9 del enunciado).* |
-| [`central/WM_Central.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/WM_Central.py) | **60 %** | Lee argumentos CLI (`<puerto> [ip_kafka:puerto_kafka] [ruta_bd] [protocolo]`), inicializa BD con 3 operarios (`OP01`..`OP03`), fuerza todas las estaciones a `DISCONNECTED` al arrancar y lanza el servidor de sockets. Falta arrancar los hilos de Kafka y del panel web (línea 73). |
-| [`central/src/kafka_handlers.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/kafka_handlers.py) | **0 % (Vacío)** | Pendiente: consumidores de peticiones de FO y telemetría de Engine, y productores de órdenes/notificaciones. |
-| [`central/src/commands.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/commands.py) | **0 % (Vacío)** | Pendiente: órdenes arbitrarias desde Central (punto 11 del enunciado: iniciar riego, bloquear WS a `OUT_OF_SERVICE` naranja, activar WS a `ACTIVE` verde). |
-| [`central/src/panel/`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/panel/app.py) (`app.py`, `index.html`, `style.css`) | **0 % (Vacíos)** | Pendiente: cuadro de mandos web con los 5 colores/estados, parpadeo en verde al regar, caudal, volumen e ID de operario. |
-| [`central/Dockerfile`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/Dockerfile) y [`requirements.txt`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/requirements.txt) | **0 % (Vacíos)** | Pendiente para el despliegue en Railway. |
+* **Serialización:** `messages.a_bytes(diccionario)` para enviar por `KafkaProducer` y `messages.de_bytes(registro.value)` al recibir en `KafkaConsumer`.
 
 ---
 
-### 3.3. Estaciones (`/ws`) y Operarios (`/operator`) — *Persona B (Julián)*
+## 4. Estado Detallado por Componente frente al Enunciado
+
+### 4.1. Módulo Compartido (`/common` y `/tests`) — **100 % Completado**
+* `common/protocol/` (`base.py`, `standard_lrc.py`, `line_delim.py`): **100 %**.
+* `tests/` (`test_protocol.py`, `benhmark_protocol.py`): **100 %**.
+* `common/topics.py` y `common/messages.py` (en `origin/dev`): **100 %**.
+
+### 4.2. Core System (`/central`) — *Persona A (Héctor)* — **100 % Completado en código**
+* `central/database/db.py`: **100 %** (SQLite para `operators` y `stations`).
+* `central/src/state.py`: **100 %** (reservas de riego `res_riego`, actualización de caudal/volumen `act_riego`, cierre y cálculo de resumen `fin_riego`, bloqueo/activación `cambiar_si`).
+* `central/src/socket_server.py`: **100 %** (integrado con `kafka_handlers.estacion_con_fuga` y `estacion_desconectada`).
+* `central/src/kafka_handlers.py`: **100 %** (productor y consumidores de `wm.fo.requests` y `wm.ws.telemetry` con reintentos).
+* `central/src/commands.py`: **100 %** (menú interactivo en consola y soporte para `ALL`).
+* `central/src/panel/` (`app.py`, `templates/index.html`): **100 %** (panel web Flask con refresco cada 1s, 5 estados con colores y parpadeo en riego, y disparo de órdenes).
+* `central/Dockerfile`, `central/requirements.txt`, `central/docker-compose.yml`: **100 %**.
+  > [!NOTE]
+  > **Detalle en `central/docker-compose.yml`:** El archivo está dentro de `central/` pero define `context: .` y `dockerfile: central/Dockerfile`. Para ejecutarlo correctamente, debe lanzarse desde la raíz del repositorio indicando `--project-directory .`:
+  > `docker compose -f central/docker-compose.yml --project-directory . up --build`
+
+### 4.3. Estaciones (`/ws`) y Operarios (`/operator`) — *Persona B (Julián)*
 
 | Módulo / Archivo | Estado | Lo que ya está hecho | Lo que falta por implementar |
 | :--- | :---: | :--- | :--- |
-| **Monitor (`WM_WS_M`)**<br>[`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py) | **45 %**<br>*(En local, sin commitear)* | <ul><li>Parseo de argumentos obligatorios (`<puerto_engine> <ip_central:puerto_central> <id_ws>`) y opcionales (`[ubicacion] [protocolo]`).</li><li>Conexión TCP a `WM_Central`, handshake `init_connection`, envío de `AUTH#id_ws#ubicacion` y cierre limpio con `EOT`.</li></ul> | <ul><li>Abrir servidor de sockets local en `<puerto_engine>` para aceptar a `WM_WS_E`.</li><li>Bucle de comprobación de salud cada **1 segundo** hacia `WM_WS_E` (ej. `PING` $\rightarrow$ `OK` / `KO`).</li><li>Si `WM_WS_E` responde `KO` o se desconecta, enviar `LEAK#<id_ws>` a `WM_Central`.</li><li>Cuando `WM_WS_E` se recupere, enviar `RECOVERED#<id_ws>` a `WM_Central`.</li></ul> |
-| **Engine (`WM_WS_E`)**<br>`ws/engine/WM_WS_E.py` | **0 %**<br>*(No creado)* | Solo existe `ws/engine/.gitkeep`. | <ul><li>Recibir por CLI `<ip_kafka:puerto_kafka> <ip_monitor:puerto_monitor>` (y el ID de WS o recibirlo del Monitor al conectar).</li><li>Conectar por socket al Monitor `WM_WS_M` y responder cada segundo al ping de salud (`OK` o `KO`).</li><li>Hilo/lectura de teclado en tiempo real para alternar estado de avería (`KO`) y recuperación (`OK`), y opción de menú para finalizar riego manualmente o regar manualmente.</li><li>Consumidor/Productor Kafka: recibir orden de activación, abrir electroválvula, emitir telemetría cada **1 segundo** (caudal L/min y volumen acumulado L), y detener riego por límite de tiempo, menú o fuga enviando resumen final.</li></ul> |
-| **Field Operator (`WM_FO`)**<br>`operator/src/WM_FO.py` | **0 %**<br>*(No creado)* | Solo existe `operator/src/.gitkeep`. | <ul><li>Recibir por CLI `<ip_kafka:puerto_kafka> <id_operador>`.</li><li>Consultar/mostrar estaciones disponibles.</li><li>Modo manual: solicitar activación de riego en una WS.</li><li>Modo automático por **fichero**: leer servicios de un archivo, enviar el primero a Central, esperar su conclusión (éxito o fracaso), **esperar 4 segundos** y solicitar el siguiente.</li><li>Mostrar en pantalla todos los pasos de validación, telemetría en vivo de su WS y resumen final del riego.</li></ul> |
-| **Dockerfiles Lab y Pruebas** | **0 %** | — | `ws/Dockerfile`, `operator/Dockerfile`, `docker-compose.yml` local y script generador de `<DNI>SD_Test.log`. |
+| **Monitor (`WM_WS_M`)**<br>[`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py) | **95 %** | <ul><li>Conexión y `AUTH` con Central.</li><li>Servidor local para el Engine y bucle `vigilar_engine` cada 1s.</li><li>Envío de `LEAK#<id_ws>` y `RECOVERED#<id_ws>`.</li></ul> | <ul><li>Cambiar `"CHECK_HEALTH"` en la línea 58 por `f"CHECK_HEALTH#{id_ws}"` para que `WM_WS_E` aprenda automáticamente su `id_ws` al conectarse al Monitor.</li></ul> |
+| **Engine (`WM_WS_E`)**<br>`ws/engine/WM_WS_E.py` | **0 %**<br>*(Siguiente paso)* | Solo existe `ws/engine/.gitkeep`. | <ul><li>Recibir por CLI `<ip_kafka:puerto_kafka> <ip_monitor:puerto_monitor> [protocolo]`.</li><li>Conectar por socket al Monitor, hacer `init_connection`, recibir `CHECK_HEALTH#<id_ws>` y responder `"OK"` o `"KO"`.</li><li>Consumir `topics.ORDENES` (`"wm.ws.commands"`): atender `START`, `STOP`, `BLOCK`, `ACTIVATE` dirigidos a su `id_ws` o a `"ALL"`.</li><li>Durante el riego: cada **1 segundo** enviar `messages.msj_telem(..., final=False)` a `topics.TELEMETRIA` y al cumplir `duration` (o parar desde menú) enviar `final=True`.</li><li>Si el usuario pulsa tecla para simular fuga (`KO`), cortar riego en curso y responder `"KO"` al Monitor hasta que pulse tecla de recuperar (`OK`).</li></ul> |
+| **Field Operator (`WM_FO`)**<br>`operator/src/WM_FO.py` | **0 %**<br>*(Siguiente paso)* | Solo existe `operator/src/.gitkeep`. | <ul><li>Recibir por CLI `<ip_kafka:puerto_kafka> <id_operador> [fichero_servicios]`.</li><li>Consumir en un hilo `topics.NOTIF_FO` (`"wm.fo.notifications"`) filtrando `msg["operator"] == id_operador`, mostrando `RECEIVED`, `AUTHORIZED`, `DENIED`, `PROGRESS` (caudal y volumen), `FINISHED` y `LEAK_STOP`.</li><li>Modo manual: pedir `ws` y `duracion` por teclado y publicar `messages.msj_pet(...)` en `topics.PETICIONES`.</li><li>Modo fichero: leer cada servicio (`ws` y `duracion`), enviarlo, esperar a recibir el evento de fin (`FINISHED`, `DENIED` o `LEAK_STOP`), **esperar 4 segundos** y enviar el siguiente.</li></ul> |
+| **Dockerfiles Lab y Pruebas** | **0 %** | — | `ws/Dockerfile`, `operator/Dockerfile` y generación de `<DNI>SD_Test.log`. |
 
 ---
 
-## 4. Seguimiento del Calendario e Hitos del Equipo
+## 5. Seguimiento del Calendario e Hitos del Equipo
 
 ```
-[✅ COMPLETADO]  7-9 Oct   : Repo GitHub + Protocolo de Sockets en /common (StandardLRC + LineDelim)
-[🟡 AL 75%]      10-13 Oct : Sockets y Auth (Servidor Central + BD + Estado listos; Monitor conecta y autentica; falta ping Engine-Monitor y Panel)
-[🔴 EN RIESGO]   14-17 Oct : Flujo de riego con Kafka (HOY es 16 Oct: topics.py y messages.py siguen vacíos)
-[⏳ PRÓXIMO]     18-20 Oct : Funcionalidad completa (Fugas en riego, órdenes globales, FO modo fichero)
+[✅ COMPLETADO]  7-9 Oct   : Repo GitHub + Contrato completo en /common (Sockets + Topics/Mensajes Kafka)
+[✅ COMPLETADO]  10-13 Oct : Sockets, Auth, BD SQLite, Servidor Central, Panel Web y WM_WS_M
+[🟡 AL 50%]      14-17 Oct : Flujo de riego con Kafka (Lado Central 100% listo; falta implementar WM_WS_E y WM_FO)
+[⏳ EN CURSO]    18-20 Oct : Funcionalidad completa (Fugas en riego, modo fichero en FO)
 [⏳ PRÓXIMO]     21-22 Oct : Despliegue Railway + 2 PCs Laboratorio con Docker
 [⏳ META]        23 Oct    : Cierre, log <DNI>SD_Test.log, carpeta prompts IA y memoria
 ```
 
-### Evaluación de Hitos de Control (Sección 5 del Plan de Héctor):
-1. **Fin 9 oct — *Contrato de mensajes escrito***:
-   * **Sockets:** Cerrado (`AUTH#id#ubicacion`, `LEAK#id`, `RECOVERED#id` sobre `StandardLRCProtocol`).
-   * **Kafka:** **Pendiente**. Es urgente rellenar [`common/topics.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/topics.py) y [`common/messages.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/messages.py) hoy mismo para que Héctor pueda programar [`kafka_handlers.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/kafka_handlers.py) y tú puedas programar `WM_WS_E` y `WM_FO`.
-2. **Fin 13 oct — *Una WS se registra en Central y aparece en el panel***:
-   * Registro en Central y persistencia en SQLite: **Conseguido** (al ejecutar `WM_Central.py` y `WM_WS_M.py`, la estación pasa de `DISCONNECTED` a `ACTIVE`).
-   * Visualización en el Panel Web: **Pendiente** (parte de Héctor en `central/src/panel/`).
-3. **Fin 17 oct — *Un riego completo de principio a fin en local***:
-   * **En riesgo inmediato** (vence mañana sábado 17 de octubre). Requiere cerrar hoy el contrato de Kafka y mañana los manejadores en `WM_Central`, `WM_WS_E` y `WM_FO`.
-
 ---
 
-## 5. Observaciones Técnicas Importantes Detectadas en el Código
+## 6. Hoja de Ruta Inmediata para Julián (Persona B)
 
-1. **Coordinación de `origin/dev-hector` vs `origin/dev`:**
-   * En el commit `30d1095` y merge `3b090a2` (hace unos minutos), Héctor borró algunos bloques de comentarios explicativos al principio de `WM_Central.py`, `db.py`, `socket_server.py` y `state.py`. No afecta a la lógica funcional, pero conviene que actualices tu rama local con `git pull origin dev-julian` antes de subir nuevos cambios.
-2. **Paso del ID de la estación de `WM_WS_M` a `WM_WS_E`:**
-   * El enunciado (pág. 10) especifica sobre `WM_WS_E`: *"La WS quedará asignada con el ID recibido en la línea de parámetros del WM_WS_M y cuya validez deberá ser confirmada por WM_Central en el proceso de autenticación"*.
-   * Por tanto, cuando `WM_WS_E` se conecte por socket a `WM_WS_M`, el Monitor puede enviarle el `id_ws` (por ejemplo en el primer mensaje o saludo de control, o dentro del comando `PING#<id_ws>`) para que `WM_WS_E` no tenga que recibir el ID por consola y sepa a qué topic/ID de estación responder en Kafka.
-3. **Corte inmediato de riego por fuga:**
-   * Actualmente en [`socket_server.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/central/src/socket_server.py#L160-L162), cuando Central recibe `LEAK#id`, solo llama a `state.fij_estado(id_estacion, state.LEAK)`. Cuando conectéis Kafka, si la estación estaba en estado `WATERING`, tanto el Engine como Central deben abortar el riego inmediatamente y notificar al operario (punto 9 del enunciado).
-4. **Registro de Prompts de IA:**
-   * Aún no se ha creado la carpeta/documento de prompts de IA en el repositorio.
-
----
-
-## 6. Plan de Acción Recomendado para Hoy (16 de Octubre)
-
-1. **Sincronizar e ignorar archivos temporales:**
-   * Añadir `*.db` a [`.gitignore`](file:///Users/julianhinojosagil/Documents/Dev/water-management/.gitignore) y eliminar `central/database/wm.db`.
-   * Hacer `git pull origin dev-julian` para traer los commits de merge `5a1a456` y `859a82b`.
-2. **Completar `ws/monitor/WM_WS_M.py` (100 % del Monitor):**
-   * Añadir el servidor de sockets en `<puerto_engine>` para que conecte `WM_WS_E`.
-   * Implementar el bucle de ping cada 1 segundo (`PING#<id_ws>`) y el envío automático de `LEAK#<id_ws>` y `RECOVERED#<id_ws>` a `WM_Central`.
-   * Subir `WM_WS_M.py` a `dev-julian`.
-3. **Definir el Contrato de Kafka en `/common` (Prioridad Máxima Conjunta):**
-   * Rellenar [`common/topics.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/topics.py) y [`common/messages.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/common/messages.py) y hacer PR a `dev` para desbloquear el flujo de riego de este fin de semana.
-4. **Implementar `ws/engine/WM_WS_E.py` y `operator/src/WM_FO.py`.**
+1. **Integrar las ramas ahora mismo:**
+   * Traer los cambios de `origin/dev` a tu rama `dev-julian` (`git merge origin/dev`) para tener localmente `common/topics.py`, `common/messages.py` y toda la Central lista.
+2. **Ajustar 1 línea en [`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py#L58):**
+   * Enviar `f"CHECK_HEALTH#{id_ws}"` para transmitir el identificador de estación al Engine.
+3. **Programar `ws/engine/WM_WS_E.py`:**
+   * Ya tienes exactamente el formato de mensajes que espera Central (`topics.ORDENES` y `topics.TELEMETRIA`).
+4. **Programar `operator/src/WM_FO.py`:**
+   * Ya tienes exactamente el formato de peticiones y notificaciones que usa Central (`topics.PETICIONES` y `topics.NOTIF_FO`).
+5. **Probar el flujo completo en local** levantando Kafka con el `docker-compose.yml` de Central y ejecutando `WM_Central.py`, `WM_WS_M.py`, `WM_WS_E.py` y `WM_FO.py`.
