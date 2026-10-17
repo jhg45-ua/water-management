@@ -12,6 +12,7 @@ from database import db
 from src import state
 from src import socket_server
 from src import kafka_handlers
+from src import commands
 
 
 # Operarios que se dan de alta al arrancar. Si hace falta alguno más, se añade aquí.
@@ -71,6 +72,7 @@ hilo_sockets.start()
 
 # Aquí se arrancará el hilo de Kafka (direccion_kafka) y el del panel.
 kafka_handlers.iniciar_kafka(direccion_kafka)
+threading.Thread(target=commands.menu_cons, daemon=True).start()
 print("[CENTRAL] Central en marcha. Pulsa Ctrl+C para pararla.")
 
 #MANTENER LA CENTRAL ACTIVA
