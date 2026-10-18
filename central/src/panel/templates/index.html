@@ -28,8 +28,8 @@ button { margin: 6px 4px 0 0; cursor: pointer; }
 <div id="grid"></div>
 
 <script>
-const TEXTO = { ACTIVE: "Disponible", WATERING: "Regando", LEAK: "Fuga detectada",
-                OUT_OF_SERVICE: "Fuera de Servicio", DISCONNECTED: "Desconectada" };
+const TEXTO = { ACTIVE: "Available", WATERING: "Watering", LEAK: "Leak (Averiada)",
+                OUT_OF_SERVICE: "Out of Service", DISCONNECTED: "Disconnected" };
 let ultimo = "";
 
 async function orden(ws, accion) {
@@ -52,7 +52,8 @@ async function refrescar() {
     html += `<div class="card ${d.status}">
       <div class="ws">${ws}</div>
       <div>${d.location}</div>
-      <div><b>${TEXTO[d.status] || d.status}</b></div>`;
+      <div><b>${TEXTO[d.status] || d.status}</b></div>
+      <div>Total suministrado: ${Number(d.total || 0).toFixed(1)} L</div>`;
     if (d.status === "WATERING")
       html += `<div>${d.flow} L/min · ${d.volume} L · ${d.operator}</div>`;
     html += `<button onclick="orden('${ws}','iniciar')">Iniciar</button>
