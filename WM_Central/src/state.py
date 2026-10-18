@@ -4,7 +4,6 @@ import time
 from database import db
 
 
-# Estados posibles de una estación.
 ACTIVE = "ACTIVE"
 WATERING = "WATERING"
 LEAK = "LEAK"
@@ -43,18 +42,14 @@ def nueva_ent(ubicacion, estado, total=0):
     }
 
 
-def _resumen(ent, volumen):
-    segundos = int(time.time() - ent["start"]) if ent["start"] else 0
-    return {"operator": ent["operator"], "volume": volumen, "duration": segundos}
-
-
 def _cambiar(identificador, estado):
     ent = estaciones[identificador]
     resumen = None
 
     if ent["status"] == WATERING and estado != WATERING:
-        resumen = _resumen(ent, ent["volume"])
-        ent["total"] += resumen["volume"]
+        segundos = int(time.time() - ent["start"]) if ent["start"] else 0
+        resumen = {"operator": ent["operator"], "volume": ent["volume"], "duration": segundos}
+        ent["total"] += ent["volume"]
 
     ent["status"] = estado
 
