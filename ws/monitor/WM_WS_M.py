@@ -21,7 +21,6 @@ try:
     puerto_central = int(puerto_central)
 except ValueError:
     print("El puerto tiene que ser un número")
-
     sys.exit(1)
 
 # Argumentos opcionales: ubicación y protocolo de sockets
