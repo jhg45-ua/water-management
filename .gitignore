@@ -17,3 +17,4 @@ venv/
 # Logs y ficheros temporales
 *.log
 .DS_Store
+central/database/wm.db
