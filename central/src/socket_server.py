@@ -1,4 +1,3 @@
-
 import socket
 import threading
 import time
@@ -117,7 +116,7 @@ def proc_pet(texto, id_estacion):
             kafka_handlers.estacion_con_fuga(id_estacion)
             reg("[SOCKETS] AVERÍA en " + id_estacion + ": fuga detectada")
         else:
-            state.fij_estado(id_estacion, state.ACTIVE)
+            state.cambiar_si(id_estacion, (state.LEAK,), state.ACTIVE)
             reg("[SOCKETS] " + id_estacion + " recuperada")
 
         return "OK", id_estacion
