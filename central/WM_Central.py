@@ -71,12 +71,14 @@ for id_estacion, datos in estaciones.items():
 hilo_sockets = threading.Thread(target=socket_server.ini_servidor, args=(puerto,protocol_class), daemon=True)
 hilo_sockets.start()
 
-# Aquí se arrancará el hilo de Kafka (direccion_kafka) y el del panel.
 kafka_handlers.iniciar_kafka(direccion_kafka)
-threading.Thread(target=commands.menu_cons, daemon=True).start()
-print("[CENTRAL] Central en marcha. Pulsa Ctrl+C para pararla.")
+
+# Panel web (puerto de la variable PORT, 8080 por defecto)
 puerto_panel = int(os.environ.get("PORT", 8080))
 threading.Thread(target=panel.ini_panel, args=(puerto_panel,), daemon=True).start()
+
+# Menú de órdenes por consola
+threading.Thread(target=commands.menu_cons, daemon=True).start()
 
 #MANTENER LA CENTRAL ACTIVA
 
