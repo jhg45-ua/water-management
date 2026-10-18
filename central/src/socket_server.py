@@ -1,6 +1,7 @@
 import socket
 import threading
 import time
+import os
 
 from common.protocol.standard_lrc import StandardLRCProtocol
 from common.protocol.line_delim import LineDelimitedProtocol
@@ -16,6 +17,8 @@ PROTOCOLS = {
 
 MAX_MON = 50
 TIEMPO_ESPERA = 5
+TIEMPO_VIDA = int(os.environ.get("TIEMPO_VIDA", 15))  # segundos sin noticias del Monitor = caído (0 = desactivado)
+ESPERA_VIDA = TIEMPO_VIDA or None
 cupo = threading.BoundedSemaphore(MAX_MON)
 
 
@@ -55,9 +58,9 @@ def atender_mon(conexion, protocol_class=StandardLRCProtocol):
     protocol = protocol_class()
 
     try:
-        conexion.settimeout(TIEMPO_ESPERA)
+        conexion.settimeout(ESPERA_VIDA)
         protocol.accept_connection(conexion)
-        conexion.settimeout(None)
+        conexion.settimeout(ESPERA_VIDA)
 
         while True:
             peticion = protocol.receive_request(conexion)
@@ -86,28 +89,48 @@ def proc_pet(texto, id_estacion):
     partes = texto.split(SEPARATOR)
     operacion = partes[0]
 
-    if operacion == "AUTH":
+    # PING : mensaje de vida del Monitor (que llegue ya basta para saber que sigue vivo)
+    if operacion == "PING":
+        return "OK", id_estacion
+
+    # REGISTER#id#ubicacion : da de alta una estación nueva (o actualiza su ubicación)
+    if operacion == "REGISTER":
         if len(partes) < 3 or partes[1] == "":
+            return "KO#Mensaje REGISTER incorrecto", id_estacion
+
+        state.alta_estac(partes[1], partes[2])
+        reg("[SOCKETS] " + partes[1] + " registrada en " + partes[2])
+        return "OK", id_estacion
+
+    # AUTH#id (estricta: la estación debe estar registrada) o AUTH#id#ubicacion (la registra si hace falta)
+    if operacion == "AUTH":
+        if len(partes) < 2 or partes[1] == "":
             return "KO#Mensaje AUTH incorrecto", id_estacion
 
         nuevo_id = partes[1]
-        ubicacion = partes[2]
 
+        # AUTH repetido en la misma conexión (p. ej. un reintento)
         if nuevo_id == id_estacion:
             return "OK", id_estacion
 
+        # Si la estación ya está conectada con otro Monitor, la rechazo
         estado_actual = state.obt_estado(nuevo_id)
         if estado_actual is not None and estado_actual != state.DISCONNECTED:
             return "KO#Estación ya conectada", id_estacion
 
-        state.alta_estac(nuevo_id, ubicacion)
+        if len(partes) >= 3:
+            state.alta_estac(nuevo_id, partes[2])
+        elif estado_actual is None:
+            return "KO#WS no registrada", id_estacion
+
         state.fij_estado(nuevo_id, state.ACTIVE)
-        reg("[SOCKETS] " + nuevo_id + " autenticada en " + ubicacion)
+        reg("[SOCKETS] " + nuevo_id + " autenticada")
         return "OK", nuevo_id
 
     if id_estacion is None:
         return "KO#No autenticado", id_estacion
 
+    # LEAK#id y RECOVERED#id
     if operacion == "LEAK" or operacion == "RECOVERED":
         if len(partes) < 2 or partes[1] != id_estacion:
             return "KO#Id incorrecto", id_estacion
