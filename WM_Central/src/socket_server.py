@@ -69,7 +69,7 @@ def atender_mon(conexion, protocol_class=StandardLRCProtocol):
             conexion.settimeout(TIEMPO_ESPERA)
             respuesta, id_estacion = proc_pet(peticion, id_estacion)
             protocol.send_response(conexion, respuesta)
-            conexion.settimeout(None)
+            conexion.settimeout(ESPERA_VIDA)
 
     except (ConnectionError, OSError, ValueError):
         pass
