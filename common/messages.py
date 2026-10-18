@@ -35,6 +35,8 @@ def msj_telem(ws, operario, caudal, volumen, final=False):  # Engine -> Central:
     return {"type": "TELEMETRY", "ws": ws, "operator": operario,
             "flow": caudal, "volume": volumen, "final": final}
 
+def msj_estados(estaciones):  # Central -> FO: lista de estaciones {ws: {"location", "status"}}
+    return {"type": "STATIONS", "stations": estaciones}
 
 def a_bytes(mensaje):  # Diccionario -> bytes JSON, listo para enviar por Kafka
     return json.dumps(mensaje).encode("utf-8")
