@@ -50,7 +50,7 @@ print("[ENGINE] Conectado y listo para recibir comprobaciones de salud.")
 
 def leer_teclado():
     global averia
-    print(f"[{id_ws}] ⌨️  Pulsa 'k' + Enter para simular avería, 'r' + Enter para recuperar.")
+    print(f"[{id_ws}] Pulsa 'k' + Enter para simular avería, 'r' + Enter para recuperar.")
     while True:
         try:
             linea = input()
@@ -93,11 +93,14 @@ def simular_riego(operario, duracion):
         print(f"[{id_ws}] Telemetría ({segundo}/{duracion} s): {caudal} L/min | Total: {round(volumen_total, 2)} L")
 
     regando = False
-    # Emitir telemetría final para que Central cierre el servicio y guarde los litros en SQLite
-    telem_final = messages.msj_telem(id_ws, operario, 0, round(volumen_total, 2), final=True)
-    productor_kafka.send(topics.TELEMETRIA, messages.a_bytes(telem_final))
-    productor_kafka.flush()
-    print(f"[{id_ws}] Electroválvula CERRADA. Riego finalizado. Consumo total: {round(volumen_total, 2)} L")
+    # Solo enviamos fin normal si NO ha sido provocado por una fuga ('k')
+    if not averia:
+        telem_final = messages.msj_telem(id_ws, operario, 0, round(volumen_total, 2), final=True)
+        productor_kafka.send(topics.TELEMETRIA, messages.a_bytes(telem_final))
+        productor_kafka.flush()
+        print(f"[{id_ws}] Electroválvula CERRADA. Riego finalizado. Consumo total: {round(volumen_total, 2)} L")
+    else:
+        print(f"[{id_ws}] Electroválvula CERRADA por FUGA. Riego abortado.")
 
 def escuchar_kafka():
     global productor_kafka, regando
