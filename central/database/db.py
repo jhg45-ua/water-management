@@ -25,6 +25,10 @@ def ini_bd(ruta=None):  # Crea las tablas si no existen. Se llama una vez al arr
     cursor.execute("""CREATE TABLE IF NOT EXISTS operators (id   TEXT PRIMARY KEY,name TEXT) """)
     cursor.execute("""CREATE TABLE IF NOT EXISTS stations (id        TEXT PRIMARY KEY,location  TEXT,status    TEXT,last_seen TEXT)""")
 
+    try:
+        cursor.execute("ALTER TABLE stations ADD COLUMN total REAL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     conexion.commit()
     conexion.close()
 
@@ -122,6 +126,14 @@ def desc_todas():
     conexion.commit()
     conexion.close()
 
+def sumar_total(identificador, litros):  # Suma litros al total suministrado por la estación
+    conexion = obt_conex()
+    cursor = conexion.cursor()
+
+    cursor.execute("UPDATE stations SET total = total + ? WHERE id = ?",(litros, identificador))
+
+    conexion.commit()
+    conexion.close()
 
 def list_estac():
     conexion = obt_conex()
