@@ -1,0 +1,4 @@
+# Servicios de riego para pruebas de lote
+# Formato: <ID_ESTACION> <DURACION_SEGUNDOS>
+WS-01 10
+WS-01 15
