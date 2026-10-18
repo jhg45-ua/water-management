@@ -36,6 +36,12 @@ if len(sys.argv) > 5:
     protocolo_nombre = sys.argv[5].lower()
 protocol_class = StandardLRCProtocol if protocolo_nombre == "lrc" else LineDelimitedProtocol
 
+lock_central = threading.Lock()  # Para sincronizar el acceso al socket de central
+
+def enviar_a_central(mensaje):
+    with lock_central:
+        return protocol.send_request(sock_central, mensaje)
+
 
 def vigilar_engine():
     protocol_engine = protocol_class()
@@ -55,7 +61,7 @@ def vigilar_engine():
 
                 try:
                     # Le preguntamos a Engine como esta
-                    estado = protocol_engine.send_request(conn_engine, "CHECK_HEALTH")
+                    estado = protocol_engine.send_request(conn_engine, f"CHECK_HEALTH#{id_ws}")
                 except (ConnectionError, OSError):
                     # Si se rompe el socket, se considera averia/fuga
                     estado = "KO"
@@ -65,7 +71,7 @@ def vigilar_engine():
                 if estado == "KO":
                     if not fuga_activa:
                         print(f"[{id_ws}] ¡ALERTA! Fuga detectada en el Engine. Notificando a Central...")
-                        protocol.send_request(sock_central, f"LEAK#{id_ws}")
+                        enviar_a_central(f"LEAK#{id_ws}")
                         fuga_activa = True
                     # Si el socket se rompió, salimos para volver a esperar conexión
                     if conn_engine.fileno() == -1:
@@ -74,7 +80,7 @@ def vigilar_engine():
                 elif estado == "OK":
                     if fuga_activa:
                         print(f"[{id_ws}] ✅ Avería resuelta. Notificando recuperación a Central...")
-                        protocol.send_request(sock_central, f"RECOVERED#{id_ws}")
+                        enviar_a_central(f"RECOVERED#{id_ws}")
                         fuga_activa = False
         except Exception as e:
             time.sleep(1)   
@@ -112,7 +118,12 @@ try:
     print(f"[{id_ws}] Monitor en ejecución. Pulsa Ctrl+C para finalizar.")
 
     while True:
-        time.sleep(1)
+        time.sleep(5)
+        try:
+            enviar_a_central("PING")
+        except (ConnectionError, OSError):
+            print(f"[{id_ws}] Conexión perdida con Central.")
+            break
 except KeyboardInterrupt:
     print(f"\n[{id_ws}] Desconectando de Central...")
 finally:
