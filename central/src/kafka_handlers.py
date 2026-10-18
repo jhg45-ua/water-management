@@ -33,7 +33,23 @@ def _arrancar(servidor):
         hilo = threading.Thread(target=_bucle_consumidor, args=(topic, servidor, manejador), daemon=True)
         hilo.start()
 
+    hilo = threading.Thread(target=_publicar_estaciones, daemon=True)
+    hilo.start()
+
     print(f"[KAFKA] Conectado a {servidor}")
+
+
+# Cada segundo publica el estado de todas las estaciones, para que los operarios puedan verlas.
+def _publicar_estaciones():
+    while True:
+        lista = {ws: {"location": d["location"], "status": d["status"]} for ws, d in state.obt_todas().items()}
+
+        try:
+            _enviar(topics.ESTACIONES, "estaciones", messages.msj_estados(lista))
+        except Exception as error:
+            print(f"[KAFKA] No se pudo publicar el estado de las estaciones: {error}")
+
+        time.sleep(1)
 
 
 # Si Kafka no está disponible, espera un poco y vuelve a intentarlo.
