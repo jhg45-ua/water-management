@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>WaterManagement - Central</title>
+<style>
+body { font-family: sans-serif; margin: 20px; background: #f4f4f4; }
+h1 { margin: 0 0 10px; }
+#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 15px; }
+.card { border-radius: 8px; padding: 12px; color: #fff; }
+.ACTIVE { background: #2e9e44; }
+.WATERING { background: #2e9e44; animation: parpadeo 1s infinite; }
+.LEAK { background: #d32f2f; }
+.OUT_OF_SERVICE { background: #f57c00; }
+.DISCONNECTED { background: #8a8a8a; }
+@keyframes parpadeo { 50% { opacity: .35; } }
+.ws { font-size: 20px; font-weight: bold; }
+button { margin: 6px 4px 0 0; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>WaterManagement - Central</h1>
+<div>Todas las estaciones:
+  <button onclick="orden('ALL','iniciar')">Iniciar riego</button>
+  <button onclick="orden('ALL','bloquear')">Bloquear</button>
+  <button onclick="orden('ALL','activar')">Activar</button>
+</div>
+<div id="grid"></div>
+
+<script>
+const TEXTO = { ACTIVE: "Available", WATERING: "Watering", LEAK: "Leak (Averiada)",
+                OUT_OF_SERVICE: "Out of Service", DISCONNECTED: "Disconnected" };
+let ultimo = "";
+
+async function orden(ws, accion) {
+  let duracion = null;
+  if (accion === "iniciar") {
+    duracion = prompt("Duración del riego (segundos):", "30");
+    if (!duracion) return;
+  }
+  await fetch("/api/orden", { method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ ws: ws, accion: accion, duracion: duracion }) });
+}
+
+async function refrescar() {
+  const texto = await (await fetch("/api/estado")).text();
+  if (texto === ultimo) return;          // si no ha cambiado nada, no repintamos
+  ultimo = texto;
+  const datos = JSON.parse(texto);
+  let html = "";
+  for (const [ws, d] of Object.entries(datos)) {
+    html += `<div class="card ${d.status}">
+      <div class="ws">${ws}</div>
+      <div>${d.location}</div>
+      <div><b>${TEXTO[d.status] || d.status}</b></div>
+      <div>Total suministrado: ${Number(d.total || 0).toFixed(1)} L</div>`;
+    if (d.status === "WATERING")
+      html += `<div>${d.flow} L/min · ${d.volume} L · ${d.operator}</div>`;
+    html += `<button onclick="orden('${ws}','iniciar')">Iniciar</button>
+      <button onclick="orden('${ws}','bloquear')">Bloquear</button>
+      <button onclick="orden('${ws}','activar')">Activar</button></div>`;
+  }
+  document.getElementById("grid").innerHTML = html || "<p>No hay estaciones registradas</p>";
+}
+setInterval(refrescar, 1000);
+refrescar();
+</script>
+</body>
+</html>
