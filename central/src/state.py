@@ -3,14 +3,14 @@ import time
 
 from database import db
 
-# Estados posibles de una estación.
-ACTIVE = "ACTIVE"                  # Disponible, esperando un riego (verde)
-WATERING = "WATERING"              # Regando (verde parpadeando)
-LEAK = "LEAK"                      # Fuga detectada (rojo)
-OUT_OF_SERVICE = "OUT_OF_SERVICE"  # Parada por orden de Central (naranja)
-DISCONNECTED = "DISCONNECTED"      # Sin conexión con Central (gris)
 
-# Motivo que se da al operario cuando la estación no está disponible
+# Estados posibles de una estación.
+ACTIVE = "ACTIVE"
+WATERING = "WATERING"
+LEAK = "LEAK"
+OUT_OF_SERVICE = "OUT_OF_SERVICE"
+DISCONNECTED = "DISCONNECTED"
+
 MOTIVOS = {
     WATERING: "ya está regando",
     LEAK: "tiene una fuga",
@@ -20,44 +20,44 @@ MOTIVOS = {
 
 estaciones = {}
 
-# lock para que dos hilos no modifiquen el diccionario a la vez
 lock = threading.Lock()
 
 
-def cargar_bd():  # Carga en memoria las estaciones de la BD (al arrancar)
+def cargar_bd():
     with lock:
         estaciones.clear()
 
         for fila in db.list_estac():
-            estaciones[fila["id"]] = nueva_ent(fila["location"], fila["status"])
+            estaciones[fila["id"]] = nueva_ent(fila["location"], fila["status"], fila.get("total") or 0)
 
 
-def nueva_ent(ubicacion, estado):  # Datos de una estación
+def nueva_ent(ubicacion, estado, total=0):
     return {
         "location": ubicacion,
         "status": estado,
-        "flow": 0,         # caudal actual
-        "volume": 0,       # volumen acumulado en el riego en curso
-        "operator": None,  # operario que ha pedido el riego en curso
-        "start": None,     # hora de inicio del riego en curso
+        "flow": 0,
+        "volume": 0,
+        "operator": None,
+        "start": None,
+        "total": total,
     }
 
 
-def _resumen(ent, volumen):  # Resumen de un riego: operario, volumen y segundos que ha durado
+def _resumen(ent, volumen):
     segundos = int(time.time() - ent["start"]) if ent["start"] else 0
     return {"operator": ent["operator"], "volume": volumen, "duration": segundos}
 
 
-def _cambiar(identificador, estado):  # (interno, con el lock cogido) Cambia el estado y devuelve el resumen si cortaba un riego
+def _cambiar(identificador, estado):
     ent = estaciones[identificador]
     resumen = None
 
     if ent["status"] == WATERING and estado != WATERING:
         resumen = _resumen(ent, ent["volume"])
+        ent["total"] += resumen["volume"]
 
     ent["status"] = estado
 
-    # Si deja de regar, ponemos a cero los datos del riego
     if estado != WATERING:
         ent["flow"] = 0
         ent["volume"] = 0
@@ -67,7 +67,7 @@ def _cambiar(identificador, estado):  # (interno, con el lock cogido) Cambia el 
     return resumen
 
 
-def alta_estac(identificador, ubicacion):  # Añade una estación (o actualiza su ubicación) en la BD y en memoria
+def alta_estac(identificador, ubicacion):
     db.reg_estac(identificador, ubicacion)
 
     with lock:
@@ -77,12 +77,12 @@ def alta_estac(identificador, ubicacion):  # Añade una estación (o actualiza s
             estaciones[identificador] = nueva_ent(ubicacion, DISCONNECTED)
 
 
-def hay_estac(identificador):  # True si Central conoce esa estación
+def hay_estac(identificador):
     with lock:
         return identificador in estaciones
 
 
-def obt_estado(identificador):  # Estado de una estación (None si no existe)
+def obt_estado(identificador):
     with lock:
         if identificador not in estaciones:
             return None
@@ -90,23 +90,27 @@ def obt_estado(identificador):  # Estado de una estación (None si no existe)
         return estaciones[identificador]["status"]
 
 
-def es_disp(identificador):  # True solo si está ACTIVE
+def es_disp(identificador):
     return obt_estado(identificador) == ACTIVE
 
 
-def fij_estado(identificador, estado):  # Cambia el estado (memoria + BD). Devuelve el resumen si cortaba un riego
+def fij_estado(identificador, estado):
     with lock:
         if identificador not in estaciones:
             return None
 
         resumen = _cambiar(identificador, estado)
 
-    # La BD se actualiza fuera del lock para no bloquear a los demás hilos
+    # Actualizamos la BD fuera del lock para no bloquear otros hilos.
     db.fij_estado(identificador, estado)
+
+    if resumen:
+        db.sumar_total(identificador, resumen["volume"])
+
     return resumen
 
 
-def cambiar_si(identificador, permitidos, estado):  # Cambia el estado solo si el actual está en 'permitidos'. Devuelve (cambiado, resumen)
+def cambiar_si(identificador, permitidos, estado):
     with lock:
         if identificador not in estaciones or estaciones[identificador]["status"] not in permitidos:
             return False, None
@@ -114,10 +118,14 @@ def cambiar_si(identificador, permitidos, estado):  # Cambia el estado solo si e
         resumen = _cambiar(identificador, estado)
 
     db.fij_estado(identificador, estado)
+
+    if resumen:
+        db.sumar_total(identificador, resumen["volume"])
+
     return True, resumen
 
 
-def res_riego(identificador, operario):  # Reserva la estación para un riego. Devuelve (True, None) o (False, motivo)
+def res_riego(identificador, operario):
     with lock:
         if identificador not in estaciones:
             return False, "estación no registrada"
@@ -137,7 +145,7 @@ def res_riego(identificador, operario):  # Reserva la estación para un riego. D
     return True, None
 
 
-def act_riego(identificador, caudal, volumen):  # Actualiza el riego en curso (solo memoria). False si la estación no está regando
+def act_riego(identificador, caudal, volumen):
     with lock:
         if identificador not in estaciones or estaciones[identificador]["status"] != WATERING:
             return False
@@ -147,19 +155,20 @@ def act_riego(identificador, caudal, volumen):  # Actualiza el riego en curso (s
         return True
 
 
-def fin_riego(identificador, volumen):  # Termina el riego: vuelve a ACTIVE y devuelve el resumen (None si no estaba regando)
+def fin_riego(identificador, volumen):
     with lock:
         if identificador not in estaciones or estaciones[identificador]["status"] != WATERING:
             return None
 
-        resumen = _resumen(estaciones[identificador], volumen)
-        _cambiar(identificador, ACTIVE)
+        estaciones[identificador]["volume"] = volumen
+        resumen = _cambiar(identificador, ACTIVE)
 
     db.fij_estado(identificador, ACTIVE)
+    db.sumar_total(identificador, resumen["volume"])
     return resumen
 
 
-def desc_todas():  # Pone todas las estaciones como desconectadas, en memoria y en la BD
+def desc_todas():
     with lock:
         for identificador in estaciones:
             _cambiar(identificador, DISCONNECTED)
@@ -167,6 +176,6 @@ def desc_todas():  # Pone todas las estaciones como desconectadas, en memoria y 
     db.desc_todas()
 
 
-def obt_todas():  # Copia de todas las estaciones (para que el panel no pueda romper el original)
+def obt_todas():
     with lock:
         return {identificador: dict(datos) for identificador, datos in estaciones.items()}
