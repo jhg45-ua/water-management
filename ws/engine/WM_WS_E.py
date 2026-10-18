@@ -49,7 +49,7 @@ protocol.init_connection(sock_monitor)
 print("[ENGINE] Conectado y listo para recibir comprobaciones de salud.")
 
 def leer_teclado():
-    global averia
+    global averia, regando
     print(f"[{id_ws}] Pulsa 'k' + Enter para simular avería, 'r' + Enter para recuperar.")
     while True:
         try:
