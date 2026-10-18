@@ -1,16 +1,11 @@
 import os
 import sqlite3
 from datetime import datetime
-
-# Ruta por defecto del fichero de la base de datos (junto a este mismo fichero).
-# Si en Railway queremos guardarla en un volumen, se la pasamos a ini_bd().
 RUTA_BD = os.path.join(os.path.dirname(__file__), "wm.db")
 
 
 def obt_conex():  # Abre una conexión nueva (una por operación: SQLite no se comparte entre hilos)
     conexion = sqlite3.connect(RUTA_BD)
-
-    # Con esto las filas se pueden leer por nombre: fila["status"]
     conexion.row_factory = sqlite3.Row
     return conexion
 
@@ -19,32 +14,27 @@ def ini_bd(ruta=None):  # Crea las tablas si no existen. Se llama una vez al arr
     global RUTA_BD
     if ruta is not None:
         RUTA_BD = ruta
+
     conexion = obt_conex()
-    cursor = conexion.cursor()
-
-    cursor.execute("""CREATE TABLE IF NOT EXISTS operators (id   TEXT PRIMARY KEY,name TEXT) """)
-    cursor.execute("""CREATE TABLE IF NOT EXISTS stations (id        TEXT PRIMARY KEY,location  TEXT,status    TEXT,last_seen TEXT)""")
-
+    conexion.execute("CREATE TABLE IF NOT EXISTS operators (id TEXT PRIMARY KEY, name TEXT)")
+    conexion.execute("CREATE TABLE IF NOT EXISTS stations (id TEXT PRIMARY KEY, location TEXT, status TEXT, last_seen TEXT)")
     try:
-        cursor.execute("ALTER TABLE stations ADD COLUMN total REAL DEFAULT 0")
+        conexion.execute("ALTER TABLE stations ADD COLUMN total REAL DEFAULT 0")
     except sqlite3.OperationalError:
         pass
+
     conexion.commit()
     conexion.close()
 
 
-# ---------------------------------------------------------------
-# OPERARIOS
-# ---------------------------------------------------------------
-
+#Operarios
 def alta_oper(identificador, nombre):
     conexion = obt_conex()
-    cursor = conexion.cursor()
 
     if hay_oper(identificador):
-        cursor.execute("UPDATE operators SET name = ? WHERE id = ?",(nombre, identificador))
+        conexion.execute("UPDATE operators SET name = ? WHERE id = ?", (nombre, identificador))
     else:
-        cursor.execute("INSERT INTO operators (id, name) VALUES (?, ?)",(identificador, nombre))
+        conexion.execute("INSERT INTO operators (id, name) VALUES (?, ?)", (identificador, nombre))
 
     conexion.commit()
     conexion.close()
@@ -52,29 +42,21 @@ def alta_oper(identificador, nombre):
 
 def hay_oper(identificador):
     conexion = obt_conex()
-    cursor = conexion.cursor()
-
-    cursor.execute("SELECT id FROM operators WHERE id = ?",(identificador,))
-
-    fila = cursor.fetchone()
+    fila = conexion.execute("SELECT id FROM operators WHERE id = ?", (identificador,)).fetchone()
     conexion.close()
 
     return fila is not None
 
+#Estaciones
 
-# ---------------------------------------------------------------
-# ESTACIONES
-# ---------------------------------------------------------------
-
-def reg_estac(identificador, ubicacion):  # Registra una estación nueva (si ya existía, solo actualiza la ubicación)
+def reg_estac(identificador, ubicacion):  # Registra una estación nueva ,si ya existía solo actualiza la ubicación
     conexion = obt_conex()
-    cursor = conexion.cursor()
 
     if hay_estac(identificador):
-        cursor.execute("UPDATE stations SET location = ? WHERE id = ?",(ubicacion, identificador))
+        conexion.execute("UPDATE stations SET location = ? WHERE id = ?", (ubicacion, identificador))
     else:
-        # Una estación nueva empieza como DESCONECTADA hasta que conecte de verdad
-        cursor.execute("INSERT INTO stations (id, location, status, last_seen) VALUES (?, ?, ?, ?)",(identificador, ubicacion, "DISCONNECTED", ahora()) )
+        # Una estación nueva empieza como DESCONECTADA hasta que se conecte de verdad
+        conexion.execute("INSERT INTO stations (id, location, status, last_seen) VALUES (?, ?, ?, ?)", (identificador, ubicacion, "DISCONNECTED", ahora()))
 
     conexion.commit()
     conexion.close()
@@ -82,11 +64,7 @@ def reg_estac(identificador, ubicacion):  # Registra una estación nueva (si ya 
 
 def hay_estac(identificador):
     conexion = obt_conex()
-    cursor = conexion.cursor()
-
-    cursor.execute("SELECT id FROM stations WHERE id = ?",(identificador,))
-
-    fila = cursor.fetchone()
+    fila = conexion.execute("SELECT id FROM stations WHERE id = ?", (identificador,)).fetchone()
     conexion.close()
 
     return fila is not None
@@ -94,11 +72,7 @@ def hay_estac(identificador):
 
 def obt_estac(identificador):  # Devuelve los datos de una estación como diccionario
     conexion = obt_conex()
-    cursor = conexion.cursor()
-
-    cursor.execute("SELECT * FROM stations WHERE id = ?",(identificador,) )
-
-    fila = cursor.fetchone()
+    fila = conexion.execute("SELECT * FROM stations WHERE id = ?", (identificador,)).fetchone()
     conexion.close()
 
     if fila is None:
@@ -107,48 +81,36 @@ def obt_estac(identificador):  # Devuelve los datos de una estación como diccio
     return dict(fila)
 
 
-def fij_estado(identificador, estado):  #Cambia el estado
+def fij_estado(identificador, estado):  # Cambia el estado
     conexion = obt_conex()
-    cursor = conexion.cursor()
-
-    cursor.execute("UPDATE stations SET status = ?, last_seen = ? WHERE id = ?",(estado, ahora(), identificador))
-
+    conexion.execute("UPDATE stations SET status = ?, last_seen = ? WHERE id = ?", (estado, ahora(), identificador))
     conexion.commit()
     conexion.close()
 
 
 def desc_todas():
     conexion = obt_conex()
-    cursor = conexion.cursor()
-
-    cursor.execute("UPDATE stations SET status = ?",("DISCONNECTED",))
-
+    conexion.execute("UPDATE stations SET status = ?", ("DISCONNECTED",))
     conexion.commit()
     conexion.close()
+
 
 def sumar_total(identificador, litros):  # Suma litros al total suministrado por la estación
     conexion = obt_conex()
-    cursor = conexion.cursor()
-
-    cursor.execute("UPDATE stations SET total = total + ? WHERE id = ?",(litros, identificador))
-
+    conexion.execute("UPDATE stations SET total = total + ? WHERE id = ?", (litros, identificador))
     conexion.commit()
     conexion.close()
 
+
 def list_estac():
     conexion = obt_conex()
-    cursor = conexion.cursor()
-
-    cursor.execute("SELECT * FROM stations ORDER BY id")
-    filas = cursor.fetchall()
+    filas = conexion.execute("SELECT * FROM stations ORDER BY id").fetchall()
     conexion.close()
 
     return [dict(fila) for fila in filas]
 
 
-# ---------------------------------------------------------------
-# AUXILIARES
-# ---------------------------------------------------------------
+#Auxiliar
 
-def ahora(): 
+def ahora():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
