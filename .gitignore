@@ -12,8 +12,10 @@ venv/
 # Base de datos local
 *.sqlite
 *.sqlite3
-!central/database/schema.sql
+*.db
+!WM_Central/database/schema.sql
 
 # Logs y ficheros temporales
 *.log
+!*SD_Test.log
 .DS_Store
