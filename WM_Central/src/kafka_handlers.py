@@ -17,8 +17,7 @@ productor = None
 
 # Inicia Kafka en un hilo aparte, para que Central no se quede esperando si Kafka no está disponible.
 def iniciar_kafka(servidor):
-    hilo = threading.Thread(target=_arrancar, args=(servidor,), daemon=True)
-    hilo.start()
+    threading.Thread(target=_arrancar, args=(servidor,), daemon=True).start()
 
 
 # Crea el productor y los hilos que escuchan los topics (reintenta hasta que haya broker).
@@ -30,11 +29,9 @@ def _arrancar(servidor):
     escuchas = [(topics.PETICIONES, manejar_peticion), (topics.TELEMETRIA, manejar_telemetria)]
 
     for topic, manejador in escuchas:
-        hilo = threading.Thread(target=_bucle_consumidor, args=(topic, servidor, manejador), daemon=True)
-        hilo.start()
+        threading.Thread(target=_bucle_consumidor, args=(topic, servidor, manejador), daemon=True).start()
 
-    hilo = threading.Thread(target=_publicar_estaciones, daemon=True)
-    hilo.start()
+    threading.Thread(target=_publicar_estaciones, daemon=True).start()
 
     print(f"[KAFKA] Conectado a {servidor}")
 
@@ -42,7 +39,9 @@ def _arrancar(servidor):
 # Cada segundo publica el estado de todas las estaciones, para que los operarios puedan verlas.
 def _publicar_estaciones():
     while True:
-        lista = {ws: {"location": d["location"], "status": d["status"]} for ws, d in state.obt_todas().items()}
+        lista = {}
+        for ws, datos in state.obt_todas().items():
+            lista[ws] = {"location": datos["location"], "status": datos["status"]}
 
         try:
             _enviar(topics.ESTACIONES, "estaciones", messages.msj_estados(lista))
@@ -81,7 +80,6 @@ def _bucle_consumidor(topic, servidor, manejador):
             print(f"[KAFKA] Error al procesar un mensaje de {topic}: {error}")
 
 
-# Envía un mensaje a Kafka.
 def _enviar(topic, clave, mensaje):
     if productor is None:
         print("[KAFKA] Error: Kafka no está iniciado")
@@ -90,7 +88,6 @@ def _enviar(topic, clave, mensaje):
     productor.send(topic, key=str(clave).encode("utf-8"), value=messages.a_bytes(mensaje))
 
 
-# Envía una notificación al operario.
 def notificar(operario, ws, evento, texto, caudal=0, volumen=0, mostrar=True):
     if mostrar:
         print(f"[RIEGO] {operario} / {ws}: {evento} - {texto}")
@@ -99,7 +96,6 @@ def notificar(operario, ws, evento, texto, caudal=0, volumen=0, mostrar=True):
     _enviar(topics.NOTIF_FO, operario, mensaje)
 
 
-# Envía una orden a una estación de riego.
 def ordenar(ws, accion, operario=None, duracion=None):
     mensaje = messages.msj_orden(ws, accion, operario, duracion)
     _enviar(topics.ORDENES, ws, mensaje)
@@ -138,7 +134,6 @@ def procesar_peticion(operario, ws, duracion, desde_central=False):
         _denegar(operario, ws, "Operario no registrado")
         return False
 
-    # Intentamos reservar la estación para el riego.
     reservada, motivo = state.res_riego(ws, operario)
 
     if not reservada:
@@ -173,13 +168,14 @@ def manejar_telemetria(mensaje):
         resumen = state.fin_riego(ws, volumen)
 
         if resumen is not None:
-            notificar(resumen["operator"], ws, messages.EV_FINAL, f"Riego terminado en {ws}: {resumen['volume']:.1f} L en {resumen['duration']} s", 0, resumen["volume"])
+            texto = f"Riego terminado en {ws}: {resumen['volume']:.1f} L en {resumen['duration']} s"
+            notificar(resumen["operator"], ws, messages.EV_FINAL, texto, 0, resumen["volume"])
 
         return
 
-    # Si el riego sigue activo, notificamos los datos actuales.
     if state.act_riego(ws, caudal, volumen):
-        notificar(mensaje.get("operator"), ws, messages.EV_PROGRESO, f"Regando en {ws}: {caudal} L/min, {volumen} L", caudal, volumen, mostrar=False)
+        texto = f"Regando en {ws}: {caudal} L/min, {volumen} L"
+        notificar(mensaje.get("operator"), ws, messages.EV_PROGRESO, texto, caudal, volumen, mostrar=False)
 
 
 # Detiene el riego cuando se detecta una fuga.
@@ -188,7 +184,8 @@ def estacion_con_fuga(ws):
 
     if resumen is not None:
         ordenar(ws, messages.ACC_PARAR)
-        notificar(resumen["operator"], ws, messages.EV_FUGA, f"Riego cortado en {ws} por una fuga: {resumen['volume']:.1f} L en {resumen['duration']} s", 0, resumen["volume"])
+        texto = f"Riego cortado en {ws} por una fuga: {resumen['volume']:.1f} L en {resumen['duration']} s"
+        notificar(resumen["operator"], ws, messages.EV_FUGA, texto, 0, resumen["volume"])
 
 
 # Actúa cuando una estación se desconecta durante el riego.
@@ -197,7 +194,8 @@ def estacion_desconectada(ws):
 
     if resumen is not None:
         ordenar(ws, messages.ACC_PARAR)
-        notificar(resumen["operator"], ws, messages.EV_FINAL, f"Riego interrumpido en {ws}: la estación se ha desconectado ({resumen['volume']:.1f} L en {resumen['duration']} s)", 0, resumen["volume"])
+        texto = f"Riego interrumpido en {ws}: la estación se ha desconectado ({resumen['volume']:.1f} L en {resumen['duration']} s)"
+        notificar(resumen["operator"], ws, messages.EV_FINAL, texto, 0, resumen["volume"])
 
 
 # Permite iniciar un riego desde la propia Central.
@@ -215,7 +213,8 @@ def bloquear_estacion(ws):
     ordenar(ws, messages.ACC_BLOQUEAR)
 
     if resumen is not None:
-        notificar(resumen["operator"], ws, messages.EV_FINAL, f"Riego cortado en {ws}: la estación ha sido bloqueada por Central ({resumen['volume']:.1f} L en {resumen['duration']} s)", 0, resumen["volume"])
+        texto = f"Riego cortado en {ws}: la estación ha sido bloqueada por Central ({resumen['volume']:.1f} L en {resumen['duration']} s)"
+        notificar(resumen["operator"], ws, messages.EV_FINAL, texto, 0, resumen["volume"])
 
     return True
 

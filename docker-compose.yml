@@ -20,7 +20,7 @@ services:
   central:
     build:
       context: .
-      dockerfile: central/Dockerfile
+      dockerfile: WM_Central/Dockerfile
     depends_on:
       - kafka
     ports:

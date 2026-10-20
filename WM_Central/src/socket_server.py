@@ -33,24 +33,23 @@ def ini_servidor(puerto, protocol_class=StandardLRCProtocol):
     try:
         servidor.bind(("0.0.0.0", puerto))
     except OSError:
-        reg("[SOCKETS] No se puede abrir el puerto " + str(puerto) + " (¿ya está en uso?)")
+        reg(f"[SOCKETS] No se puede abrir el puerto {puerto} (¿ya está en uso?)")
         return
 
     servidor.listen()
-    reg("[SOCKETS] Escuchando Monitores en el puerto " + str(puerto))
+    reg(f"[SOCKETS] Escuchando Monitores en el puerto {puerto}")
 
     while True:
         conexion, direccion = servidor.accept()
 
         if not cupo.acquire(blocking=False):
-            reg("[SOCKETS] Demasiadas conexiones, se rechaza " + str(direccion))
+            reg(f"[SOCKETS] Demasiadas conexiones, se rechaza {direccion}")
             conexion.close()
             continue
 
-        reg("[SOCKETS] Nueva conexión desde " + str(direccion))
+        reg(f"[SOCKETS] Nueva conexión desde {direccion}")
 
-        hilo = threading.Thread(target=atender_mon, args=(conexion, protocol_class), daemon=True)
-        hilo.start()
+        threading.Thread(target=atender_mon, args=(conexion, protocol_class), daemon=True).start()
 
 
 def atender_mon(conexion, protocol_class=StandardLRCProtocol):
@@ -60,7 +59,6 @@ def atender_mon(conexion, protocol_class=StandardLRCProtocol):
     try:
         conexion.settimeout(ESPERA_VIDA)
         protocol.accept_connection(conexion)
-        conexion.settimeout(ESPERA_VIDA)
 
         while True:
             peticion = protocol.receive_request(conexion)
@@ -71,7 +69,7 @@ def atender_mon(conexion, protocol_class=StandardLRCProtocol):
             conexion.settimeout(TIEMPO_ESPERA)
             respuesta, id_estacion = proc_pet(peticion, id_estacion)
             protocol.send_response(conexion, respuesta)
-            conexion.settimeout(None)
+            conexion.settimeout(ESPERA_VIDA)
 
     except (ConnectionError, OSError, ValueError):
         pass
@@ -79,7 +77,7 @@ def atender_mon(conexion, protocol_class=StandardLRCProtocol):
     finally:
         if id_estacion is not None:
             kafka_handlers.estacion_desconectada(id_estacion)
-            reg("[SOCKETS] " + id_estacion + " desconectada")
+            reg(f"[SOCKETS] {id_estacion} desconectada")
 
         conexion.close()
         cupo.release()
@@ -99,7 +97,7 @@ def proc_pet(texto, id_estacion):
             return "KO#Mensaje REGISTER incorrecto", id_estacion
 
         state.alta_estac(partes[1], partes[2])
-        reg("[SOCKETS] " + partes[1] + " registrada en " + partes[2])
+        reg(f"[SOCKETS] {partes[1]} registrada en {partes[2]}")
         return "OK", id_estacion
 
     # AUTH#id (estricta: la estación debe estar registrada) o AUTH#id#ubicacion (la registra si hace falta)
@@ -124,23 +122,23 @@ def proc_pet(texto, id_estacion):
             return "KO#WS no registrada", id_estacion
 
         state.fij_estado(nuevo_id, state.ACTIVE)
-        reg("[SOCKETS] " + nuevo_id + " autenticada")
+        reg(f"[SOCKETS] {nuevo_id} autenticada")
         return "OK", nuevo_id
 
     if id_estacion is None:
         return "KO#No autenticado", id_estacion
 
     # LEAK#id y RECOVERED#id
-    if operacion == "LEAK" or operacion == "RECOVERED":
+    if operacion in ("LEAK", "RECOVERED"):
         if len(partes) < 2 or partes[1] != id_estacion:
             return "KO#Id incorrecto", id_estacion
 
         if operacion == "LEAK":
             kafka_handlers.estacion_con_fuga(id_estacion)
-            reg("[SOCKETS] AVERÍA en " + id_estacion + ": fuga detectada")
+            reg(f"[SOCKETS] AVERÍA en {id_estacion}: fuga detectada")
         else:
             state.cambiar_si(id_estacion, (state.LEAK,), state.ACTIVE)
-            reg("[SOCKETS] " + id_estacion + " recuperada")
+            reg(f"[SOCKETS] {id_estacion} recuperada")
 
         return "OK", id_estacion
 
