@@ -17,5 +17,6 @@ venv/
 
 # Logs y ficheros temporales
 *.log
-!*SD_Test.log
 .DS_Store
+central/database/wm.db
+!*SD_Test.log
