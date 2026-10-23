@@ -32,6 +32,7 @@ services:
       - central-data:/data
 
   ws:
+    profiles: ["local"]
     build:
       context: .
       dockerfile: ws/Dockerfile
@@ -49,6 +50,7 @@ services:
     tty: true
 
   operator:
+    profiles: ["local"]
     build:
       context: .
       dockerfile: operator/Dockerfile
