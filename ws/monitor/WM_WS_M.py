@@ -78,7 +78,7 @@ def vigilar_engine():
                 # Caso 2: Engine está sano (OK)
                 elif estado == "OK":
                     if fuga_activa:
-                        print(f"[{id_ws}] ✅ Avería resuelta. Notificando recuperación a Central...")
+                        print(f"[{id_ws}] Avería resuelta. Notificando recuperación a Central...")
                         enviar_a_central(f"RECOVERED#{id_ws}")
                         fuga_activa = False
         except Exception as e:
