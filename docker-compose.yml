@@ -1,0 +1,64 @@
+services:
+  kafka:
+    image: apache/kafka:3.8.1
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:19092,CONTROLLER://:9093,HOST://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:19092,HOST://${PUBLIC_IP:-localhost}:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  central:
+    build:
+      context: .
+      dockerfile: WM_Central/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "5000:5000"
+      - "8080:8080"
+    volumes:
+      - central-data:/data
+
+  ws:
+    build:
+      context: .
+      dockerfile: ws/Dockerfile
+    depends_on:
+      - central
+      - kafka
+    environment:
+      PUERTO_ENGINE: "6001"
+      CENTRAL_ADDR: central:5000
+      ID_WS: WS-01
+      LOCATION: Parque Central
+      PROTO: lrc
+      KAFKA_SERVERS: kafka:19092
+    stdin_open: true
+    tty: true
+
+  operator:
+    build:
+      context: .
+      dockerfile: operator/Dockerfile
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_SERVERS: kafka:19092
+      ID_OPERADOR: OP01
+    stdin_open: true
+    tty: true
+
+volumes:
+  central-data:
