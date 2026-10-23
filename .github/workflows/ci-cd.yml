@@ -1,0 +1,75 @@
+name: CI/CD Water Management (AWS)
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - dev-julian
+      - dev-hector
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  ci:
+    name: Tests y Construcción Docker (CI)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verificar sintaxis Python de todos los módulos
+        run: python -m compileall -q common WM_Central ws operator tests
+
+      - name: Ejecutar tests del protocolo StandardLRC
+        run: python tests/test_protocol.py lrc
+
+      - name: Ejecutar tests del protocolo LineDelimited
+        run: python tests/test_protocol.py line
+
+      - name: Validar construcción Docker (WM_Central, WS y FO)
+        run: |
+          docker build -f WM_Central/Dockerfile -t wm-central:ci .
+          docker build -f ws/Dockerfile -t wm-ws:ci .
+          docker build -f operator/Dockerfile -t wm-fo:ci .
+
+  cd-aws:
+    name: Despliegue Automático en AWS EC2 (CD)
+    needs: ci
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Desplegar en instancia AWS EC2 por SSH
+        env:
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+          AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          if [ -z "$AWS_HOST" ] || [ -z "$AWS_SSH_KEY" ]; then
+            echo "Aviso: Los secrets AWS_HOST / AWS_SSH_KEY aún no están configurados en GitHub. Se omite el despliegue."
+            exit 0
+          fi
+
+          mkdir -p ~/.ssh
+          echo "$AWS_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$AWS_HOST" >> ~/.ssh/known_hosts
+
+          ssh ubuntu@"$AWS_HOST" "
+            set -e
+            cd ~/water-management
+            git fetch origin
+            git checkout $TARGET_BRANCH
+            git pull origin $TARGET_BRANCH
+            docker compose up -d --build
+            docker image prune -f
+          "
