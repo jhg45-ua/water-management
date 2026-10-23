@@ -82,7 +82,7 @@ def escuchar_kafka():
                     volumen = datos.get("volume", 0)
                     print(f"[{id_operador} - {ws}] {caudal} L/min | Acumulado: {volumen} L")
                 elif evento in (messages.EV_FINAL, messages.EV_FUGA):
-                    print(f"\n[{id_operador}] 🏁 {texto}")
+                    print(f"\n[{id_operador}] {texto}")
                     evento_fin_riego.set() # Concluido (éxito o corte)
 
 def pedir_riego(ws, duracion):

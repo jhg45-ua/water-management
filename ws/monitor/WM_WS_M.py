@@ -120,7 +120,7 @@ try:
         time.sleep(5)
         try:
             enviar_a_central("PING")
-            print(f"[{id_ws}] Ping enviado a Central (sesión viva)")
+            # print(f"[{id_ws}] Ping enviado a Central (sesión viva)")
         except (ConnectionError, OSError):
             print(f"[{id_ws}] Conexión perdida con Central.")
             break
