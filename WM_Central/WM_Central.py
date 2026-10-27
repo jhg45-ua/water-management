@@ -15,7 +15,7 @@ from src.panel import app as panel
 
 
 # Operarios que se dan de alta al arrancar. Si hace falta alguno más, se añade aquí.
-operarios = [("OP01", "Operario 1"), ("OP02", "Operario 2"), ("OP03", "Operario 3")]
+operarios = [("OP01", "Operario 1"), ("OP02", "Operario 2"), ("OP03", "Operario 3"), ("MANUAL", "Riego Manual")]
 
 #PARÁMETROS
 
