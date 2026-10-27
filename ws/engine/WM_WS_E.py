@@ -50,7 +50,7 @@ print("[ENGINE] Conectado y listo para recibir comprobaciones de salud.")
 
 def leer_teclado():
     global averia, regando
-    print(f"[{id_ws}] Pulsa 'k' + Enter para simular avería, 'r' + Enter para recuperar.")
+    print(f"[{id_ws}] Pulsa 'k' avería, 'r' recuperar, 'm [seg]' riego manual, 's' parar riego.")
     while True:
         try:
             linea = input()
@@ -64,6 +64,25 @@ def leer_teclado():
                 if regando:
                     print(f"[{id_ws}] Parada manual de riego solicitada.")
                     regando = False
+            elif linea.lower().startswith("m"):
+                if averia:
+                    print(f"[{id_ws}] Rechazando riego manual: estación en AVERÍA")
+                elif regando:
+                    print(f"[{id_ws}] Ya hay un riego en curso")
+                elif productor_kafka is None:
+                    print(f"[{id_ws}] Conexión con Kafka no disponible aún")
+                else:
+                    partes = linea.split()
+                    duracion = 30
+                    if len(partes) > 1:
+                        try:
+                            duracion = int(partes[1])
+                        except ValueError:
+                            duracion = 30
+                    pet = messages.msj_pet("MANUAL", id_ws, duracion)
+                    productor_kafka.send(topics.PETICIONES, messages.a_bytes(pet))
+                    productor_kafka.flush()
+                    print(f"[{id_ws}] Solicitando riego manual a Central ({duracion} s)...")
         except EOFError:
             break
 
@@ -145,10 +164,16 @@ def escuchar_kafka():
                     operario = orden.get("operator", "DESCONOCIDO")
                     threading.Thread(target=simular_riego, args=(operario, duracion), daemon=True).start()
 
-            elif accion in (messages.ACC_PARAR, messages.ACC_BLOQUEAR):
+            elif accion == messages.ACC_PARAR:
                 if regando:
                     print(f"[{id_ws}] Orden de parada recibida de Central.")
                     regando = False
+            elif accion == messages.ACC_BLOQUEAR:
+                print(f"[{id_ws}] Orden de Central: Estación BLOQUEADA (Fuera de Servicio)")
+                if regando:
+                    regando = False
+            elif accion == messages.ACC_ACTIVAR:
+                print(f"[{id_ws}] Orden de Central: Estación ACTIVADA (Disponible)")
 
 try:
     while True:
