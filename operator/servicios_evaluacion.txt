@@ -1,0 +1,23 @@
+# ==============================================================================
+# Fichero Batch de Servicios de Riego (Sistemas Distribuidos)
+# ==============================================================================
+# Formato de cada línea:
+#   <ID_ESTACION> <DURACION_EN_SEGUNDOS>
+#
+# Notas:
+#   - Las líneas que empiezan por '#' y las líneas vacías son ignoradas.
+#   - El operario (WM_FO) espera a que termine cada riego y aplica una
+#     pausa obligatoria de 4 segundos antes de enviar el siguiente.
+# ==============================================================================
+
+# Riego en Estación 1 (15 segundos)
+WS-01 15
+
+# Riego en Estación 2 (20 segundos)
+WS-02 20
+
+# Segundo pase en Estación 1 (10 segundos)
+WS-01 10
+
+# Riego en Estación 3 (12 segundos)
+WS-03 12
