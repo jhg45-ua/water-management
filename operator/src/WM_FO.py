@@ -30,11 +30,46 @@ else:
 productor = None
 estaciones_actuales = {}
 evento_fin_riego = threading.Event()
+consumidor_listo = threading.Event()
 
 servidor_kafka = f"{dir_kafka}:{puerto_kafka}"
 
+def procesar_mensaje(valor):
+    global estaciones_actuales
+    datos = messages.de_bytes(valor)
+    if not datos:
+        return
+
+    tipo = datos.get("type")
+
+    # Catálogo de estaciones emitido por Central cada 1 segundo
+    if tipo == "STATIONS":
+        estaciones_actuales = datos.get("stations", {})
+
+    # Notificaciones de riego
+    elif tipo == "NOTIFY":
+        if datos.get("operator") == id_operador:
+            evento = datos.get("event")
+            texto = datos.get("text", "")
+            ws = datos.get("ws", "")
+
+            if evento == messages.EV_RECIBIDA:
+                print(f"\n[{id_operador}] {texto}")
+            elif evento == messages.EV_AUTORIZADA:
+                print(f"\n[{id_operador}] {texto}")
+            elif evento == messages.EV_DENEGADA:
+                print(f"\n[{id_operador}] {texto}")
+                evento_fin_riego.set() # Concluido (denegado)
+            elif evento == messages.EV_PROGRESO:
+                caudal = datos.get("flow", 0)
+                volumen = datos.get("volume", 0)
+                print(f"[{id_operador} - {ws}] {caudal} L/min | Acumulado: {volumen} L")
+            elif evento in (messages.EV_FINAL, messages.EV_FUGA):
+                print(f"\n[{id_operador}] 🏁 {texto}")
+                evento_fin_riego.set() # Concluido (éxito o corte)
+
 def escuchar_kafka():
-    global productor, estaciones_actuales
+    global productor
 
     # Reintentos de conexión por si Kafka está arrancando
     while True:
@@ -47,48 +82,26 @@ def escuchar_kafka():
                 group_id=f"fo-{id_operador}-{int(time.time())}", # Group ID único por operario
                 auto_offset_reset="latest"
             )
+            # Esperamos a que Kafka asigne particiones al consumidor antes de enviar
+            while not consumidor.assignment():
+                lote = consumidor.poll(timeout_ms=200)
+                for tp, mensajes in lote.items():
+                    for m in mensajes:
+                        procesar_mensaje(m.value)
+            consumidor_listo.set()
             print(f"[{id_operador}] Conectado a Kafka ({servidor_kafka}).")
             break
         except Exception:
             time.sleep(2)
 
     for msg in consumidor:
-        datos = messages.de_bytes(msg.value)
-        if not datos:
-            continue
-
-        tipo = datos.get("type")
-
-        # Catálogo de estaciones emitido por Central cada 1 segundo
-        if tipo == "STATIONS":
-            estaciones_actuales = datos.get("stations", {})
-
-        # Notificaciones de riego
-        elif tipo == "NOTIFY":
-            if datos.get("operator") == id_operador:
-                evento = datos.get("event")
-                texto = datos.get("text", "")
-                ws = datos.get("ws", "")
-
-                if evento == messages.EV_RECIBIDA:
-                    print(f"\n[{id_operador}] {texto}")
-                elif evento == messages.EV_AUTORIZADA:
-                    print(f"\n[{id_operador}] {texto}")
-                elif evento == messages.EV_DENEGADA:
-                    print(f"\n[{id_operador}] {texto}")
-                    evento_fin_riego.set() # Concluido (denegado)
-                elif evento == messages.EV_PROGRESO:
-                    caudal = datos.get("flow", 0)
-                    volumen = datos.get("volume", 0)
-                    print(f"[{id_operador} - {ws}] {caudal} L/min | Acumulado: {volumen} L")
-                elif evento in (messages.EV_FINAL, messages.EV_FUGA):
-                    print(f"\n[{id_operador}] {texto}")
-                    evento_fin_riego.set() # Concluido (éxito o corte)
+        procesar_mensaje(msg.value)
 
 def pedir_riego(ws, duracion):
-    # Aseguramos que el productor esté listo
+    # Aseguramos que el productor y el consumidor estén listos
     while productor is None:
         time.sleep(0.5)
+    consumidor_listo.wait()
 
     evento_fin_riego.clear()
     pet = messages.msj_pet(id_operador, ws, duracion)
@@ -97,7 +110,8 @@ def pedir_riego(ws, duracion):
     print(f"[{id_operador}] Petición enviada: {ws} durante {duracion} s. Esperando resultado...")
     
     # Bloquea hasta que Central avise de que el servicio ha finalizado (sea DENIED, FINISHED o LEAK_STOP)
-    evento_fin_riego.wait()
+    if not evento_fin_riego.wait(timeout=duracion + 30):
+        print(f"[{id_operador}] Aviso: tiempo de espera agotado sin respuesta de Central para {ws}.")
 
 def modo_fichero(ruta):
     if not os.path.exists(ruta):

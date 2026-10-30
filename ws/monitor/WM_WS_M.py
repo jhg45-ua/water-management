@@ -33,7 +33,11 @@ else:
 protocolo_nombre = "lrc"
 if len(sys.argv) > 5:
     protocolo_nombre = sys.argv[5].lower()
-protocol_class = StandardLRCProtocol if protocolo_nombre == "lrc" else LineDelimitedProtocol
+PROTOCOLS = {"lrc": StandardLRCProtocol, "line": LineDelimitedProtocol}
+if protocolo_nombre not in PROTOCOLS:
+    print(f"Error: Protocolo desconocido '{protocolo_nombre}'. Debe ser 'lrc' o 'line'.")
+    sys.exit(1)
+protocol_class = PROTOCOLS[protocolo_nombre]
 
 lock_central = threading.Lock()  # Para sincronizar el acceso al socket de central
 
@@ -61,7 +65,7 @@ def vigilar_engine():
                 try:
                     # Le preguntamos a Engine como esta
                     estado = protocol_engine.send_request(conn_engine, f"CHECK_HEALTH#{id_ws}")
-                except (ConnectionError, OSError):
+                except (ConnectionError, OSError, ValueError):
                     # Si se rompe el socket, se considera averia/fuga
                     estado = "KO"
                     conn_engine.close()
@@ -89,10 +93,15 @@ def vigilar_engine():
 protocol = protocol_class()
 
 print(f"[{id_ws}] Conectando a Central en {ip_central}:{puerto_central}...")
-sock_central = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock_central.connect((ip_central, puerto_central))
-
-protocol.init_connection(sock_central)
+while True:
+    try:
+        sock_central = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock_central.connect((ip_central, puerto_central))
+        protocol.init_connection(sock_central)
+        break
+    except (ConnectionError, OSError):
+        sock_central.close()
+        time.sleep(1)
 
 peticion_alta = f"AUTH#{id_ws}#{ubicacion}"
 respuesta = protocol.send_request(sock_central, peticion_alta)

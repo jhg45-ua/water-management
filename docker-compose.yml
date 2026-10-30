@@ -36,6 +36,7 @@ services:
     build:
       context: .
       dockerfile: ws/Dockerfile
+    restart: unless-stopped
     depends_on:
       - central
       - kafka
