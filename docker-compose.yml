@@ -32,9 +32,11 @@ services:
       - central-data:/data
 
   ws:
+    profiles: ["local"]
     build:
       context: .
       dockerfile: ws/Dockerfile
+    restart: unless-stopped
     depends_on:
       - central
       - kafka
@@ -49,6 +51,7 @@ services:
     tty: true
 
   operator:
+    profiles: ["local"]
     build:
       context: .
       dockerfile: operator/Dockerfile

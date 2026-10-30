@@ -1,26 +1,24 @@
 # Informe de Estado del Proyecto: Water Management Network
 **Asignatura:** Sistemas Distribuidos 2026/2027  
-**Fecha de actualización:** Martes, 27 de octubre de 2026 (22:55h)  
+**Fecha de actualización:** Viernes, 30 de octubre de 2026 (09:50h)  
 **Fecha de entrega / evaluación:** Viernes, 6 de noviembre de 2026  
 **Equipo:** Persona A (Héctor — Central y Nube) · Persona B (Julián — Estaciones, Operario y Laboratorio)
 
 ---
 
-## 1. Resumen Ejecutivo a Fecha de Hoy (27 de Octubre — 22:55h)
+## 1. Resumen Ejecutivo a Fecha de Hoy (30 de Octubre — 09:50h)
 
-A última hora de hoy se han completado y dejado preparados en el área de *staging* de `dev-julian` **todos los detalles funcionales y de documentación del repositorio que quedaban pendientes**, dejando el código del sistema al **100 % respecto al enunciado oficial**:
+A una semana exacta de la entrega final (6 de noviembre), el código en producción (`main` en `731c8d5`) ya integra el **100 % de la funcionalidad obligatoria y la documentación completa**, y en el directorio de trabajo local de `dev-julian` tenéis preparadas **mejoras adicionales de robustez y concurrencia** listas para commitear:
 
-* **Novedades completadas hoy en `dev-julian` (listas en *staging* para hacer `commit`):**
-  1. **Cierre al 100 % de [`ws/engine/WM_WS_E.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/engine/WM_WS_E.py) + [`WM_Central/WM_Central.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/WM_Central/WM_Central.py)**:
-     * Implementada la opción `'m [seg]'` por teclado en la propia estación para solicitar un **riego manual** a Central (dando de alta automáticamente el identificador `"MANUAL"` en SQLite al iniciar `WM_Central.py`).
-     * Actualizado el menú de ayuda en consola (`'k'` avería, `'r'` recuperar, `'m [seg]'` riego manual, `'s'` parar riego).
-     * Añadidos los avisos en pantalla cuando Central envía `BLOCK` (*"Estación BLOQUEADA (Fuera de Servicio)"*) y `ACTIVATE` (*"Estación ACTIVADA (Disponible)"*).
-  2. **Documentación completa en [`README.md`](file:///Users/julianhinojosagil/Documents/Dev/water-management/README.md) (170 líneas)**:
-     * Incluye descripción arquitectónica, argumentos CLI de los 4 ejecutables, detalle del protocolo `<STX><DATA><ETX><LRC>`, guía de despliegue local y guía del escenario distribuido de evaluación (AWS + PC Lab 1 + PC Lab 2).
-  3. **Incorporación de [`launch_ws.sh`](file:///Users/julianhinojosagil/Documents/Dev/water-management/launch_ws.sh) al control de versiones**:
-     * Script automatizado para lanzar, inspeccionar (`status`) y detener (`stop`) $N$ contenedores de estaciones de riego.
-* **Infraestructura Cloud y Laboratorio:**
-  * Despliegue en **AWS EC2** operativo con pipeline **CI/CD en GitHub Actions** ([`.github/workflows/ci-cd.yml`](file:///Users/julianhinojosagil/Documents/Dev/water-management/.github/workflows/ci-cd.yml)) y primera prueba básica de ejecución en clase superada.
+* **Ya integrado y desplegado en `main` (`731c8d5`, noche del 27 oct):**
+  1. **Cierre de [`ws/engine/WM_WS_E.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/engine/WM_WS_E.py) y [`WM_Central/WM_Central.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/WM_Central/WM_Central.py)**: Riego manual `'m [seg]'` desde estación (operario `"MANUAL"` pre-registrado en SQLite) y avisos por consola de `BLOCK`/`ACTIVATE`.
+  2. **[`README.md`](file:///Users/julianhinojosagil/Documents/Dev/water-management/README.md) definitivo (199 líneas)**: Con los DNIs reales de ambos autores (`48795869N` y `48770607G`) y todos los comandos de laboratorio (`PC LAB 1` y `PC LAB 2`) usando **Docker** obligatorio.
+  3. **Scripts de evaluación listos**: [`launch_ws.sh`](file:///Users/julianhinojosagil/Documents/Dev/water-management/launch_ws.sh) parametrizado para AWS (`CENTRAL_ADDR`, `KAFKA_SERVERS`) y lote de pruebas [`operator/servicios_evaluacion.txt`](file:///Users/julianhinojosagil/Documents/Dev/water-management/operator/servicios_evaluacion.txt).
+* **Nuevas mejoras de robustez en local (`dev-julian`, sin commitear aún — 9 archivos modificados + `.env.example`):**
+  1. **Sincronización y *timeout* en [`operator/src/WM_FO.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/operator/src/WM_FO.py)**: Espera activa a que Kafka asigne particiones (`consumidor.assignment()`) antes de lanzar la primera petición en modo fichero (`consumidor_listo`) y *timeout* de seguridad (`duracion + 30` s) en `evento_fin_riego.wait()`.
+  2. **Reintentos de conexión por socket y validación estricta de protocolo**: Bucles de reconexión inicial en [`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py) (hacia Central en AWS) y [`ws/engine/WM_WS_E.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/engine/WM_WS_E.py) (hacia Monitor), validación explícita de `'lrc'`/`'line'` en los 3 módulos de sockets y soporte de `ENV PROTO=lrc` en [`WM_Central/Dockerfile`](file:///Users/julianhinojosagil/Documents/Dev/water-management/WM_Central/Dockerfile).
+  3. **Transiciones de estado atómicas en Central**: Uso de `state.cambiar_si(...)` tanto en `AUTH` ([`WM_Central/src/socket_server.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/WM_Central/src/socket_server.py), evitando condiciones de carrera con Monitores duplicados) como en `estacion_con_fuga` ([`WM_Central/src/kafka_handlers.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/WM_Central/src/kafka_handlers.py), evitando pisar el estado `OUT_OF_SERVICE`).
+  4. **Inyección de `PUBLIC_IP` en CI/CD y plantilla [`.env.example`](file:///Users/julianhinojosagil/Documents/Dev/water-management/.env.example)**: Actualización de [`.github/workflows/ci-cd.yml`](file:///Users/julianhinojosagil/Documents/Dev/water-management/.github/workflows/ci-cd.yml) para exportar `PUBLIC_IP=$AWS_HOST` al desplegar en EC2.
 
 ---
 
@@ -28,18 +26,17 @@ A última hora de hoy se han completado y dejado preparados en el área de *stag
 
 | Rama | Último Commit | Estado / Sincronización | Contenido Principal |
 | :--- | :--- | :--- | :--- |
-| **`dev-julian`** *(rama activa actual)* | `c14638b` + **5 archivos en *staging*** | Sincronizada con `origin/dev-julian` en commits, con **cambios en `git add` sin commitear aún** y **6 commits por detrás de `main`**. *(Existe además `stash@{0}` guardado de cuando se movieron los cambios desde `main`).* | Tiene en *staging* el cierre de `WM_WS_E.py` (riego manual + avisos `BLOCK`/`ACTIVATE`), alta de `"MANUAL"` en `WM_Central.py`, `README.md` completo y `launch_ws.sh`. **Le falta hacer `git merge main`** para incorporar los últimos 6 commits de `main`. |
-| **`origin/main`** y **`main`** | `d46597c` (23 oct) | Sincronizadas entre sí. | Producción actual en AWS: tiene `profiles: ["local"]` en `docker-compose.yml` y limpieza de logs en `WM_WS_M.py` y `WM_FO.py`, pero aún no tiene tus mejoras hoy en *staging* de `dev-julian`. |
-| **`origin/dev`** y **`dev`** | `22a9f6e` (23 oct) | Sincronizadas entre sí, **5 commits por detrás de `main`**. | Se quedó en el PR #8 previo al paso a `main`. |
-| **`origin/dev-hector`** | `22a9f6e` (23 oct) | Igual que `origin/dev` (**5 commits por detrás de `main`**). *(Copia local `dev-hector` en `e7d3646`).* | Igual que `origin/dev`. |
+| **`dev-julian`** *(rama activa actual)* | `3c1def0` (27 oct) + **9 modificados y 1 sin seguimiento** | Sincronizada con `origin/dev-julian` en commits, pero **6 commits por detrás de `main`** y con cambios locales sin `git add`/`commit`. *(Sigue existiendo `stash@{0}` antiguo del 27 oct).* | Contiene en el árbol de trabajo las mejoras de robustez del 28–30 oct (`WM_FO.py`, reintentos socket en `WS`, transiciones atómicas en `WM_Central`, `PROTO` en Dockerfile, `.env.example` y `ci-cd.yml`). |
+| **`origin/main`** y **`main`** | `731c8d5` (27 oct, 23:44h) | Sincronizadas entre sí. **Rama más adelantada en commits.** | Producción actual en AWS: integra el cierre de `WM_WS_E.py`, `README.md` completo (con ambos DNIs y Docker), `launch_ws.sh`, `servicios_evaluacion.txt` y `profiles: ["local"]`. Aún no tiene los 10 cambios locales de `dev-julian`. |
+| **`origin/dev`** y **`dev`** | `40554c8` (27 oct, 23:43h) | Sincronizadas entre sí, **5 commits por detrás de `main`**. | Tiene el merge de `3c1def0`, pero nunca recibió de vuelta los commits directos previos de `main` (`d46597c`) ni el merge `731c8d5`. |
+| **`origin/dev-hector`** | `d46597c` (23 oct) | Actualizada en remoto respecto a la revisión anterior (`22a9f6e` → `d46597c`), **3 commits por detrás de `main`**. *(Copia local `dev-hector` obsoleta en `e7d3646`).* | Igual que `main` antes del merge `731c8d5` del 27 oct (le falta el nuevo `README.md`, `launch_ws.sh` y cierre de `WM_WS_E.py`). |
 
 > [!WARNING]
-> **Paso crítico de Git ahora mismo en `dev-julian`:**
-> Moviste tus cambios desde `main` a `dev-julian` usando `git stash`, pero `dev-julian` aún no tenía integrados los últimos 6 commits de `main` (`d46597c`). Para no perder nada ni pisar el `README.md` de 1 línea que había en `main` (`bf4f120`), sigue este orden exacto:
-> 1. `git add prompts/informe_estado_proyecto_sd.md` (para incluir también este informe actualizado en el commit).
-> 2. `git commit -m "Completar riego manual en WS, README y script launch_ws"`
-> 3. `git merge main` *(te pedirá resolver conflicto en `README.md`: quédate con tu versión nueva de 170 líneas).*
-> 4. `git push origin dev-julian` y abrir PR hacia `dev` / `main` (y después puedes borrar el stash antiguo con `git stash drop`).
+> **Atención al sincronizar `dev-julian` con `main` (evitar regresiones de consola):**
+> Como `dev-julian` (`3c1def0`) no llegó a hacer `git merge main` (`731c8d5`) antes de empezar los retoques del 28–30 de octubre, al fusionar con `main` aparecerán conflictos en [`docker-compose.yml`](file:///Users/julianhinojosagil/Documents/Dev/water-management/docker-compose.yml), [`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py) y [`operator/src/WM_FO.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/operator/src/WM_FO.py):
+> 1. Antes de commitear en `dev-julian`, revisa la línea 132 de [`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py#L132): en `dev-julian` sigue activo `print(f"[{id_ws}] Ping enviado a Central (sesión viva)")` cada 5 s, mientras que en `main` lo habíais comentado (`# print(...)`) para no ensuciar la terminal al hacer `docker attach ws-01`.
+> 2. Haz `git add . && git commit -m "Mejoras de robustez en Kafka/Sockets, estados atómicos y CI/CD"` en `dev-julian`.
+> 3. Ejecuta `git merge main` y resuelve quedándote con tu versión nueva en los 3 ficheros, sube a `dev` y `main`, e igualad todas las ramas (`dev`, `dev-julian`, `dev-hector`) con `main`. *(El antiguo `stash@{0}` ya está incluido en `main`, así que puedes borrarlo con `git stash drop`).*
 
 ---
 
@@ -47,51 +44,50 @@ A última hora de hoy se han completado y dejado preparados en el área de *stag
 
 | Módulo / Entregable | Responsable | Estado | Detalles |
 | :--- | :---: | :---: | :--- |
-| **Protocolos Sockets (`/common/protocol`, `/tests`)** | Ambos / Julián | **100 %** | `StandardLRCProtocol`, `LineDelimitedProtocol`, tests en CI y benchmark. |
+| **Protocolos Sockets (`/common/protocol`, `/tests`)** | Ambos / Julián | **100 %** | `StandardLRCProtocol`, `LineDelimitedProtocol`, tests unitarios superados (`lrc` y `line`) y benchmark. |
 | **Contrato Kafka (`/common/topics.py`, `messages.py`)** | Ambos / Héctor | **100 %** | 5 topics (`requests`, `notifications`, `stations`, `commands`, `telemetry`) y constructores JSON. |
-| **Central (`WM_Central`, SQLite, Panel Web, Docker)** | Persona A (Héctor) | **100 %** | Desplegada en AWS EC2 + añadido operario `"MANUAL"` para riegos locales desde estación. |
-| **Monitor de Estación ([`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py))** | Persona B (Julián) | **100 %** | `AUTH`, `PING` silencioso cada 5s con `Lock`, `CHECK_HEALTH#<id_ws>` cada 1s, `LEAK` y `RECOVERED`. |
-| **Engine de Estación ([`ws/engine/WM_WS_E.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/engine/WM_WS_E.py))** | Persona B (Julián) | **100 %** | Cerrado al 100 %: telemetría 1s, teclado `k` (fuga), `r` (recuperar), `m [seg]` (riego manual), `s` (parar) y avisos `BLOCK`/`ACTIVATE`. |
-| **Operario de Campo ([`operator/src/WM_FO.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/operator/src/WM_FO.py))** | Persona B (Julián) | **100 %** | Modo manual interactivo + modo fichero (`servicios_ejemplo.txt`) con espera de 4s entre servicios. |
-| **Dockerfiles y Orquestación (`docker-compose.yml`, `launch_ws.sh`)** | Ambos | **100 %** | Imágenes de los 3 módulos, perfiles Cloud/Local y lanzador `launch_ws.sh`. |
-| **Ciclo CI/CD ([`.github/workflows/ci-cd.yml`](file:///Users/julianhinojosagil/Documents/Dev/water-management/.github/workflows/ci-cd.yml))** | Ambos / Julián | **100 %** | GitHub Actions ejecutando tests + `docker build` + despliegue SSH automático a AWS EC2. |
-| **Documentación del Repo ([`README.md`](file:///Users/julianhinojosagil/Documents/Dev/water-management/README.md))** | Ambos / Julián | **98 %** | Completado (170 líneas). Solo falta sustituir el DNI placeholder `00000000Y` de Héctor y poner comando Docker en PC LAB 1. |
-| **Despliegue AWS y Pruebas en Laboratorio** | Ambos | **85 %** | AWS operativo y prueba básica en clase superada. Falta ensayo final completo (2 FO en PC 1 + 2 WS en PC 2). |
-| **Log `<DNI>SD_Test.log`, `/prompts` y Memoria Final** | Ambos | **Pendiente** | Generar `<DNI>SD_Test.log`, recopilar prompts IA y redactar memoria final para UACloud. |
+| **Central (`WM_Central`, SQLite, Panel Web, Docker)** | Persona A (Héctor) | **100 %** | Desplegada en AWS EC2 + operario `"MANUAL"` + transiciones atómicas `cambiar_si` en `AUTH` y `LEAK` + `ENV PROTO` en Docker. |
+| **Monitor de Estación ([`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py))** | Persona B (Julián) | **100 %** | Reconexión inicial automática a Central, `AUTH`, `PING` cada 5s con `Lock`, `CHECK_HEALTH` cada 1s (capturando también `ValueError` de LRC), `LEAK` y `RECOVERED`. |
+| **Engine de Estación ([`ws/engine/WM_WS_E.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/engine/WM_WS_E.py))** | Persona B (Julián) | **100 %** | Reconexión inicial automática al Monitor, telemetría 1s, teclado `k`, `r`, `m [seg]`, `s` y avisos `BLOCK`/`ACTIVATE`. |
+| **Operario de Campo ([`operator/src/WM_FO.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/operator/src/WM_FO.py))** | Persona B (Julián) | **100 %** | Modo manual + modo fichero (`servicios_evaluacion.txt`) con espera de asignación de particiones Kafka (`consumidor_listo`), pausa de 4s y *timeout* de seguridad. |
+| **Dockerfiles y Orquestación (`docker-compose.yml`, `launch_ws.sh`)** | Ambos | **100 %** | Imágenes de los 3 módulos, perfiles Cloud/Local, `.env.example` y lanzador `launch_ws.sh` parametrizado para AWS. |
+| **Ciclo CI/CD ([`.github/workflows/ci-cd.yml`](file:///Users/julianhinojosagil/Documents/Dev/water-management/.github/workflows/ci-cd.yml))** | Ambos / Julián | **100 %** | GitHub Actions ejecutando compilación, tests LRC/Line, builds Docker y despliegue SSH en AWS EC2 con `PUBLIC_IP`. |
+| **Documentación del Repo ([`README.md`](file:///Users/julianhinojosagil/Documents/Dev/water-management/README.md))** | Ambos / Julián | **100 %** | Cerrado al 100 % (corregidos los DNIs reales de ambos autores y comandos con Docker en `PC LAB 1` y `PC LAB 2`). |
+| **Despliegue AWS y Pruebas en Laboratorio** | Ambos | **85 %** | AWS operativo y prueba básica en clase superada. Falta ensayo final completo con los últimos parches de robustez. |
+| **Log `<DNI>SD_Test.log`, `/prompts` y Memoria Final** | Ambos | **Pendiente** | Generar `<DNI>SD_Test.log`, añadir historial de prompts de IA en `/prompts` y redactar memoria final para UACloud. |
 
 ---
 
-## 4. Dos Pequeños Apuntes detectados en el nuevo `README.md`
+## 4. Observaciones Técnicas Aplicadas en la Revisión
 
-Al revisar el nuevo [`README.md`](file:///Users/julianhinojosagil/Documents/Dev/water-management/README.md) que tienes en *staging*, está excelente y muy claro; solo tened presentes dos detalles antes de la entrega final:
+Los cambios locales en `dev-julian` pasan limpiamente `compileall` y los tests de ambos protocolos (`StandardLRCProtocol` y `LineDelimitedProtocol`). Se han corregido y dejado aplicados los **dos matices técnicos** identificados:
 
-1. **DNI de Héctor en la cabecera (Línea 7):**
-   * Aparece temporalmente como `Héctor García (DNI: 00000000Y)`. Acordaos de poner su DNI real antes de entregar.
-2. **Comando con Docker en `PC LAB 1 (Operarios)` (Línea 146):**
-   * En la sección de evaluación para `PC LAB 1` aparece `python operator/src/WM_FO.py <IP_AWS>:<PUERTO_KAFKA> OP01`.
-   * Como la página 13 del enunciado recalca en negrita que *"El uso de la tecnología Docker para el despliegue es obligatorio en todos los casos para el despliegue de cualquier módulo"*, conviene añadir ahí también el comando equivalente con Docker (`docker run -it --rm -e KAFKA_SERVERS="<HOST_AWS>:9092" -e ID_OPERADOR="OP01" wm-fo`) para usarlo el día de la corrección.
+1. **Actualización de `.env` cuando cambia la IP de AWS Learner Lab ([`.github/workflows/ci-cd.yml`](file:///Users/julianhinojosagil/Documents/Dev/water-management/.github/workflows/ci-cd.yml#L67-L76)):**
+   * Ajustado el bloque SSH para sobrescribir siempre el fichero `.env` con las comillas escapadas (`echo \"PUBLIC_IP=$AWS_HOST\" > .env`), garantizando que cada vez que se reinicie la sesión en AWS Learner Lab la nueva IP pública quede correctamente persistida en la instancia EC2.
+2. **Silenciado del `PING` cada 5 s en [`ws/monitor/WM_WS_M.py`](file:///Users/julianhinojosagil/Documents/Dev/water-management/ws/monitor/WM_WS_M.py#L132):**
+   * Comentado el `print` del Ping para no ensuciar la salida estándar compartida entre Monitor y Engine en el contenedor Docker al interactuar por teclado (`docker attach ws-01`).
 
 ---
 
-## 5. Seguimiento del Calendario e Hitos del Equipo (a 27 de Octubre — 22:55h)
+## 5. Seguimiento del Calendario e Hitos del Equipo (a 30 de Octubre — 09:50h)
 
 ```
 [✅ COMPLETADO]  Fase 1 : Repo GitHub + Contrato completo en /common (Sockets + Topics/Mensajes Kafka)
 [✅ COMPLETADO]  Fase 2 : Sockets, Auth, BD SQLite, Servidor Central, Panel Web y WM_WS_M
-[✅ COMPLETADO]  Fase 3 : Todos los módulos al 100% (Central, Monitor, Engine con riego manual y FO)
-[✅ COMPLETADO]  Fase 4 : Pipeline CI/CD + Despliegue en AWS EC2 + README completo + Prueba básica en clase
-[🔵 FASE ACTUAL] Cierre : Commit/Merge a main, ensayo completo en 2 PCs Lab, <DNI>SD_Test.log y Memoria
-[⏳ ENTREGA]     06 Nov : Entrega final en UACloud y defensa en laboratorio
+[✅ COMPLETADO]  Fase 3 : Todos los módulos al 100% (Central, Monitor, Engine y FO) + Blindaje concurrencia
+[✅ COMPLETADO]  Fase 4 : Pipeline CI/CD + Despliegue en AWS EC2 + README 100% + Prueba básica en clase
+[🔵 FASE ACTUAL] Cierre : Subir mejoras locales a main, ensayo completo Lab, <DNI>SD_Test.log, /prompts y Memoria
+[⏳ ENTREGA]     06 Nov : Entrega final en UACloud y defensa en laboratorio (quedan 7 días)
 ```
 
 ---
 
-## 6. Siguientes Pasos hasta la Entrega Final
+## 6. Siguientes Pasos hasta la Entrega Final (6 de Noviembre)
 
-1. **Cerrar el commit actual en `dev-julian`, hacer `git merge main` y llevarlo a `dev` y `main`** (con lo que AWS EC2 recibirá automáticamente por CD el alta del operario `"MANUAL"` en `WM_Central.py`).
-2. **Realizar el ensayo completo del escenario de evaluación en clase (con Docker en ambos PCs):**
-   * AWS EC2 corriendo `kafka` y `central` con `PUBLIC_IP` actualizada.
-   * PC Lab 1 ejecutando 2 contenedores de `WM_FO` (`OP01` manual y `OP02` modo fichero).
-   * PC Lab 2 ejecutando 2 contenedores de `WM_WS` (`WS-01` y `WS-02`, probando riegos, riego manual `m`, fuga `k`, recuperación `r` y bloqueo desde el Panel Web).
-3. **Generar el fichero `<DNI>SD_Test.log` y tomar las capturas de pantalla definitivas.**
-4. **Sustituir el DNI de Héctor en `README.md`, recopilar todos los prompts de IA en `/prompts` y subir la Memoria a UACloud.**
+1. **Commitear los cambios en `dev-julian`, fusionar con `main` e igualar ramas (`dev`, `dev-julian`, `dev-hector` y `main`).**
+2. **Ejecutar el ensayo completo del escenario de evaluación (con Docker en ambos PCs contra AWS):**
+   * Verificar `AWS_HOST` actualizado en GitHub Secrets al arrancar AWS Learner Lab.
+   * **PC Lab 1:** Lanzar 2 contenedores `wm-fo` (`OP01` interactivo y `OP02` con `operator/servicios_evaluacion.txt`).
+   * **PC Lab 2:** Lanzar al menos 2 contenedores de estaciones con `CENTRAL_ADDR="<HOST_AWS>:5000" KAFKA_SERVERS="<HOST_AWS>:9092" ./launch_ws.sh 2`, probando riegos simultáneos, riego manual `'m'`, avería `'k'`, recuperación `'r'` y órdenes `ALL`/individuales desde el Panel Web.
+3. **Generar y commitear el log de pruebas `<DNI>SD_Test.log` y añadir en `/prompts` todos los prompts de IA utilizados por ambos integrantes.**
+4. **Dar acceso al profesor en el repositorio GitHub, cerrar las capturas de pantalla y subir la Memoria Final en PDF a UACloud.**

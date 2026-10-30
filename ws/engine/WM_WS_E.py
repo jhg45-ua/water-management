@@ -34,18 +34,27 @@ except ValueError:
 protocolo_nombre = "lrc"
 if len(sys.argv) > 3:
     protocolo_nombre = sys.argv[3].lower()
-protocol_class = StandardLRCProtocol if protocolo_nombre == "lrc" else LineDelimitedProtocol
+PROTOCOLS = {"lrc": StandardLRCProtocol, "line": LineDelimitedProtocol}
+if protocolo_nombre not in PROTOCOLS:
+    print(f"Error: Protocolo desconocido '{protocolo_nombre}'. Debe ser 'lrc' o 'line'.")
+    sys.exit(1)
+protocol_class = PROTOCOLS[protocolo_nombre]
 
 id_ws = None
 averia = False
 protocol = protocol_class()
 
 print(f"[ENGINE] Conectando al Monitor en {dir_monitor}:{puerto_monitor}...")
-sock_monitor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock_monitor.connect((dir_monitor, puerto_monitor))
-
-# Saludo inicial (ENQ -> ACK)
-protocol.init_connection(sock_monitor)
+while True:
+    try:
+        sock_monitor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock_monitor.connect((dir_monitor, puerto_monitor))
+        # Saludo inicial (ENQ -> ACK)
+        protocol.init_connection(sock_monitor)
+        break
+    except (ConnectionError, OSError):
+        sock_monitor.close()
+        time.sleep(1)
 print("[ENGINE] Conectado y listo para recibir comprobaciones de salud.")
 
 def leer_teclado():

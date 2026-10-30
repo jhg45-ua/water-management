@@ -111,17 +111,16 @@ def proc_pet(texto, id_estacion):
         if nuevo_id == id_estacion:
             return "OK", id_estacion
 
-        # Si la estación ya está conectada con otro Monitor, la rechazo
-        estado_actual = state.obt_estado(nuevo_id)
-        if estado_actual is not None and estado_actual != state.DISCONNECTED:
-            return "KO#Estación ya conectada", id_estacion
-
         if len(partes) >= 3:
             state.alta_estac(nuevo_id, partes[2])
-        elif estado_actual is None:
+        elif not state.hay_estac(nuevo_id):
             return "KO#WS no registrada", id_estacion
 
-        state.fij_estado(nuevo_id, state.ACTIVE)
+        # Transición atómica de DISCONNECTED a ACTIVE para evitar condiciones de carrera
+        ok, _ = state.cambiar_si(nuevo_id, (state.DISCONNECTED,), state.ACTIVE)
+        if not ok:
+            return "KO#Estación ya conectada", id_estacion
+
         reg(f"[SOCKETS] {nuevo_id} autenticada")
         return "OK", nuevo_id
 

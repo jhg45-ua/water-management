@@ -180,7 +180,7 @@ def manejar_telemetria(mensaje):
 
 # Detiene el riego cuando se detecta una fuga.
 def estacion_con_fuga(ws):
-    resumen = state.fij_estado(ws, state.LEAK)
+    _, resumen = state.cambiar_si(ws, (state.ACTIVE, state.WATERING), state.LEAK)
 
     if resumen is not None:
         ordenar(ws, messages.ACC_PARAR)

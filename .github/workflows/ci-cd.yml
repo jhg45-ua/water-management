@@ -70,6 +70,8 @@ jobs:
             git fetch origin
             git checkout $TARGET_BRANCH
             git pull origin $TARGET_BRANCH
+            echo \"PUBLIC_IP=$AWS_HOST\" > .env
+            export PUBLIC_IP=$AWS_HOST
             docker compose up -d --build
             docker image prune -f
           "
