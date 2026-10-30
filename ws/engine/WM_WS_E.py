@@ -186,7 +186,11 @@ def escuchar_kafka():
 
 try:
     while True:
-        peticion = protocol.receive_request(sock_monitor)
+        try:
+            peticion = protocol.receive_request(sock_monitor)
+        except (ConnectionError, OSError):
+            peticion = None
+
         if peticion is None:
             print(f"[{id_ws or 'ENGINE'}] El Monitor ha cerrado la conexión.")
             break
