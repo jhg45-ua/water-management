@@ -24,13 +24,15 @@ except ValueError:
     sys.exit(1)
 
 # Argumentos opcionales: ubicación y protocolo de sockets
-if len(sys.argv) > 4:
-    ubicacion = sys.argv[4]
-else:
-    ubicacion = "Ubicación desconocida"
-
-# Protocolo de sockets opcional: 'lrc' (por defecto) o 'line'
+ubicacion = None
 protocolo_nombre = "lrc"
+
+if len(sys.argv) > 4:
+    if sys.argv[4].lower() in ("lrc", "line"):
+        protocolo_nombre = sys.argv[4].lower()
+    else:
+        ubicacion = sys.argv[4]
+
 if len(sys.argv) > 5:
     protocolo_nombre = sys.argv[5].lower()
 PROTOCOLS = {"lrc": StandardLRCProtocol, "line": LineDelimitedProtocol}
@@ -103,7 +105,7 @@ while True:
         sock_central.close()
         time.sleep(1)
 
-peticion_alta = f"AUTH#{id_ws}#{ubicacion}"
+peticion_alta = f"AUTH#{id_ws}#{ubicacion}" if ubicacion else f"AUTH#{id_ws}"
 respuesta = protocol.send_request(sock_central, peticion_alta)
 
 if respuesta == "OK":
