@@ -14,10 +14,11 @@ RUN mkdir -p /data
 ENV KAFKA_SERVERS=kafka:19092
 ENV DB_PATH=/data/wm.db
 ENV PORT=8080
+ENV PROTO=lrc
 
 WORKDIR /app/WM_Central
 
 # 5000 = sockets de los Monitores, 8080 = panel web
 EXPOSE 5000 8080
 
-CMD ["sh", "-c", "python -u WM_Central.py 5000 $KAFKA_SERVERS $DB_PATH"]
+CMD ["sh", "-c", "python -u WM_Central.py 5000 $KAFKA_SERVERS $DB_PATH $PROTO"]

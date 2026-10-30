@@ -31,5 +31,37 @@ services:
     volumes:
       - central-data:/data
 
+  ws:
+    profiles: ["local"]
+    build:
+      context: .
+      dockerfile: ws/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - central
+      - kafka
+    environment:
+      PUERTO_ENGINE: "6001"
+      CENTRAL_ADDR: central:5000
+      ID_WS: WS-01
+      LOCATION: Parque Central
+      PROTO: lrc
+      KAFKA_SERVERS: kafka:19092
+    stdin_open: true
+    tty: true
+
+  operator:
+    profiles: ["local"]
+    build:
+      context: .
+      dockerfile: operator/Dockerfile
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_SERVERS: kafka:19092
+      ID_OPERADOR: OP01
+    stdin_open: true
+    tty: true
+
 volumes:
   central-data:

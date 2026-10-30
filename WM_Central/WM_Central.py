@@ -33,7 +33,10 @@ direccion_kafka = sys.argv[2] if len(sys.argv) > 2 else "localhost:9092"
 ruta_bd = sys.argv[3] if len(sys.argv) > 3 else None
 # Protocolo de sockets opcional: 'lrc' (por defecto) o 'line'
 protocolo_nombre = sys.argv[4].lower() if len(sys.argv) > 4 else "lrc"
-protocol_class = socket_server.PROTOCOLS.get(protocolo_nombre, socket_server.StandardLRCProtocol)
+if protocolo_nombre not in socket_server.PROTOCOLS:
+    print(f"Error: Protocolo desconocido '{protocolo_nombre}'. Debe ser 'lrc' o 'line'.")
+    sys.exit(1)
+protocol_class = socket_server.PROTOCOLS[protocolo_nombre]
 print(f"[CENTRAL] Protocolo de sockets seleccionado: '{protocol_class.__name__}'")
 #BASE DE DATOS Y EL ESTADO
 
