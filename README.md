@@ -9,7 +9,6 @@
 ---
 
 ## 1. Descripción del proyecto
-
 Este proyecto implementa la simulación de un sistema distribuido para la gestión y monitorización en tiempo real del riego urbano (Water Management). 
 
 Combina dos paradigmas de comunicación:
