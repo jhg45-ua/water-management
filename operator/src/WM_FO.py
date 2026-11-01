@@ -31,11 +31,12 @@ productor = None
 estaciones_actuales = {}
 evento_fin_riego = threading.Event()
 consumidor_listo = threading.Event()
+ultimo_stations = 0  # momento en que llegó el último catálogo de Central (se emite cada 1 s)
 
 servidor_kafka = f"{dir_kafka}:{puerto_kafka}"
 
 def procesar_mensaje(valor):
-    global estaciones_actuales
+    global estaciones_actuales, ultimo_stations
     datos = messages.de_bytes(valor)
     if not datos:
         return
@@ -45,6 +46,7 @@ def procesar_mensaje(valor):
     # Catálogo de estaciones emitido por Central cada 1 segundo
     if tipo == "STATIONS":
         estaciones_actuales = datos.get("stations", {})
+        ultimo_stations = time.time()
 
     # Notificaciones de riego
     elif tipo == "NOTIFY":
@@ -79,7 +81,7 @@ def escuchar_kafka():
                 topics.NOTIF_FO,
                 topics.ESTACIONES,
                 bootstrap_servers=servidor_kafka,
-                group_id=f"fo-{id_operador}-{int(time.time())}", # Group ID único por operario
+                group_id=f"fo-{id_operador}", # Fijo por operario: al reabrir el FO retoma lo que no leyó
                 auto_offset_reset="latest"
             )
             # Esperamos a que Kafka asigne particiones al consumidor antes de enviar
@@ -97,11 +99,24 @@ def escuchar_kafka():
     for msg in consumidor:
         procesar_mensaje(msg.value)
 
+def central_disponible():
+    # Central emite STATIONS cada segundo: si no llega nada en 5 s, damos Central por caída
+    limite = time.time() + 5
+    while time.time() - ultimo_stations > 5:
+        if time.time() > limite:
+            return False
+        time.sleep(0.5)
+    return True
+
 def pedir_riego(ws, duracion):
     # Aseguramos que el productor y el consumidor estén listos
     while productor is None:
         time.sleep(0.5)
     consumidor_listo.wait()
+
+    if not central_disponible():
+        print(f"[{id_operador}] Imposible conectar con WM_Central")
+        return
 
     evento_fin_riego.clear()
     pet = messages.msj_pet(id_operador, ws, duracion)
@@ -152,6 +167,9 @@ def modo_manual():
         opcion = input("> ").strip()
 
         if opcion == "1":
+            if not central_disponible():
+                print(f"[{id_operador}] Imposible conectar con WM_Central")
+                continue
             print(f"\nEstaciones registradas ({len(estaciones_actuales)}):")
             for ws, d in estaciones_actuales.items():
                 estado = d.get("status", "UNKNOWN")

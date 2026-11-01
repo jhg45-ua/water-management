@@ -42,15 +42,40 @@ if protocolo_nombre not in PROTOCOLS:
 protocol_class = PROTOCOLS[protocolo_nombre]
 
 lock_central = threading.Lock()  # Para sincronizar el acceso al socket de central
+sock_central = None
+fuga_activa = False  # Para saber si ya hemos avisado a central o no
 
 def enviar_a_central(mensaje):
     with lock_central:
         return protocol.send_request(sock_central, mensaje)
 
+def conectar_central():
+    # Intenta conectar y autenticarse con Central hasta conseguirlo (también se usa si Central se cae y vuelve)
+    global sock_central
+    while True:
+        try:
+            nuevo = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            nuevo.connect((ip_central, puerto_central))
+            protocol.init_connection(nuevo)
+            peticion_alta = f"AUTH#{id_ws}#{ubicacion}" if ubicacion else f"AUTH#{id_ws}"
+            respuesta = protocol.send_request(nuevo, peticion_alta)
+        except (ConnectionError, OSError, ValueError):
+            nuevo.close()
+            time.sleep(2)
+            continue
+        if respuesta == "OK":
+            with lock_central:
+                sock_central = nuevo
+            print(f"[{id_ws}] Autenticación correcta. Estación activa.")
+            return
+        print(f"[{id_ws}] Error al autenticar: {respuesta}")
+        nuevo.close()
+        sys.exit(1)
+
 
 def vigilar_engine():
+    global fuga_activa
     protocol_engine = protocol_class()
-    fuga_activa = False  # Para saber si ya hemos avisado a central o no
 
     while True:
         try:
@@ -76,8 +101,11 @@ def vigilar_engine():
                 if estado == "KO":
                     if not fuga_activa:
                         print(f"[{id_ws}] ¡ALERTA! Fuga detectada en el Engine. Notificando a Central...")
-                        enviar_a_central(f"LEAK#{id_ws}")
-                        fuga_activa = True
+                        fuga_activa = True  # Se marca antes: si Central está caída se reenvía al reconectar
+                        try:
+                            enviar_a_central(f"LEAK#{id_ws}")
+                        except (ConnectionError, OSError, ValueError):
+                            print(f"[{id_ws}] Central no disponible, se avisará al reconectar.")
                     # Si el socket se rompió, salimos para volver a esperar conexión
                     if conn_engine.fileno() == -1:
                         break
@@ -85,8 +113,11 @@ def vigilar_engine():
                 elif estado == "OK":
                     if fuga_activa:
                         print(f"[{id_ws}] Avería resuelta. Notificando recuperación a Central...")
-                        enviar_a_central(f"RECOVERED#{id_ws}")
-                        fuga_activa = False
+                        try:
+                            enviar_a_central(f"RECOVERED#{id_ws}")
+                            fuga_activa = False
+                        except (ConnectionError, OSError, ValueError):
+                            print(f"[{id_ws}] Central no disponible, se avisará al reconectar.")
         except Exception as e:
             time.sleep(1)   
                     
@@ -95,25 +126,7 @@ def vigilar_engine():
 protocol = protocol_class()
 
 print(f"[{id_ws}] Conectando a Central en {ip_central}:{puerto_central}...")
-while True:
-    try:
-        sock_central = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock_central.connect((ip_central, puerto_central))
-        protocol.init_connection(sock_central)
-        break
-    except (ConnectionError, OSError):
-        sock_central.close()
-        time.sleep(1)
-
-peticion_alta = f"AUTH#{id_ws}#{ubicacion}" if ubicacion else f"AUTH#{id_ws}"
-respuesta = protocol.send_request(sock_central, peticion_alta)
-
-if respuesta == "OK":
-    print(f"[{id_ws}] Autenticación correcta. Estación activa.")
-else:
-    print(f"[{id_ws}] Error al autenticar: {respuesta}")
-    sock_central.close()
-    sys.exit(1)
+conectar_central()
 
 servidor_engine = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 servidor_engine.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -131,10 +144,20 @@ try:
         time.sleep(5)
         try:
             enviar_a_central("PING")
-            # print(f"[{id_ws}] Ping enviado a Central (sesión viva)")
-        except (ConnectionError, OSError):
-            print(f"[{id_ws}] Conexión perdida con Central.")
-            break
+        except (ConnectionError, OSError, ValueError):
+            # Central caída: el Monitor sigue vivo (el Engine puede terminar el riego) y reintenta
+            print(f"[{id_ws}] Imposible conectar con WM_Central. Reintentando...")
+            try:
+                sock_central.close()
+            except Exception:
+                pass
+            conectar_central()
+            # Si había una avería abierta, Central ha perdido el estado y se lo recordamos
+            if fuga_activa:
+                try:
+                    enviar_a_central(f"LEAK#{id_ws}")
+                except (ConnectionError, OSError, ValueError):
+                    pass
 except KeyboardInterrupt:
     print(f"\n[{id_ws}] Desconectando de Central...")
 finally:
