@@ -222,10 +222,7 @@ try:
 
             # Respondemos OK o KO según el estado
             respuesta = "KO" if averia else "OK"
-            try:
-                protocol.send_response(sock_monitor, respuesta)
-            except (ConnectionError, OSError):
-                pass  # se detectará en la siguiente lectura
+            protocol.send_response(sock_monitor, respuesta)
 
 except KeyboardInterrupt:
     print(f"\n[{id_ws or 'ENGINE'}] Deteniendo Engine...")

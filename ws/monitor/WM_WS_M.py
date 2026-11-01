@@ -43,14 +43,9 @@ protocol_class = PROTOCOLS[protocolo_nombre]
 
 lock_central = threading.Lock()  # Para sincronizar el acceso al socket de central
 sock_central = None
-fuga_activa = False  # Para saber si ya hemos avisado a central o no
-
-def enviar_a_central(mensaje):
-    with lock_central:
-        return protocol.send_request(sock_central, mensaje)
 
 def conectar_central():
-    # Intenta conectar y autenticarse con Central hasta conseguirlo (también se usa si Central se cae y vuelve)
+    # Conecta y se autentica con Central; reintenta hasta conseguirlo (sirve también cuando Central vuelve)
     global sock_central
     while True:
         try:
@@ -64,18 +59,21 @@ def conectar_central():
             time.sleep(2)
             continue
         if respuesta == "OK":
-            with lock_central:
-                sock_central = nuevo
+            sock_central = nuevo
             print(f"[{id_ws}] Autenticación correcta. Estación activa.")
             return
         print(f"[{id_ws}] Error al autenticar: {respuesta}")
         nuevo.close()
         sys.exit(1)
 
+def enviar_a_central(mensaje):
+    with lock_central:
+        return protocol.send_request(sock_central, mensaje)
+
 
 def vigilar_engine():
-    global fuga_activa
     protocol_engine = protocol_class()
+    fuga_activa = False  # Para saber si ya hemos avisado a central o no
 
     while True:
         try:
@@ -101,11 +99,8 @@ def vigilar_engine():
                 if estado == "KO":
                     if not fuga_activa:
                         print(f"[{id_ws}] ¡ALERTA! Fuga detectada en el Engine. Notificando a Central...")
-                        fuga_activa = True  # Se marca antes: si Central está caída se reenvía al reconectar
-                        try:
-                            enviar_a_central(f"LEAK#{id_ws}")
-                        except (ConnectionError, OSError, ValueError):
-                            print(f"[{id_ws}] Central no disponible, se avisará al reconectar.")
+                        enviar_a_central(f"LEAK#{id_ws}")
+                        fuga_activa = True
                     # Si el socket se rompió, salimos para volver a esperar conexión
                     if conn_engine.fileno() == -1:
                         break
@@ -113,11 +108,8 @@ def vigilar_engine():
                 elif estado == "OK":
                     if fuga_activa:
                         print(f"[{id_ws}] Avería resuelta. Notificando recuperación a Central...")
-                        try:
-                            enviar_a_central(f"RECOVERED#{id_ws}")
-                            fuga_activa = False
-                        except (ConnectionError, OSError, ValueError):
-                            print(f"[{id_ws}] Central no disponible, se avisará al reconectar.")
+                        enviar_a_central(f"RECOVERED#{id_ws}")
+                        fuga_activa = False
         except Exception as e:
             time.sleep(1)   
                     
@@ -144,20 +136,11 @@ try:
         time.sleep(5)
         try:
             enviar_a_central("PING")
-        except (ConnectionError, OSError, ValueError):
-            # Central caída: el Monitor sigue vivo (el Engine puede terminar el riego) y reintenta
+            # print(f"[{id_ws}] Ping enviado a Central (sesión viva)")
+        except (ConnectionError, OSError):
             print(f"[{id_ws}] Imposible conectar con WM_Central. Reintentando...")
-            try:
-                sock_central.close()
-            except Exception:
-                pass
+            sock_central.close()
             conectar_central()
-            # Si había una avería abierta, Central ha perdido el estado y se lo recordamos
-            if fuga_activa:
-                try:
-                    enviar_a_central(f"LEAK#{id_ws}")
-                except (ConnectionError, OSError, ValueError):
-                    pass
 except KeyboardInterrupt:
     print(f"\n[{id_ws}] Desconectando de Central...")
 finally:
