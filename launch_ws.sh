@@ -28,8 +28,55 @@ cd "$DIR_RAIZ"
 IMAGE_MONITOR="${IMAGE_MONITOR:-ws-monitor}"
 IMAGE_ENGINE="${IMAGE_ENGINE:-ws-engine}"
 
+# Cargar variables desde .env si existe en la raíz
+if [ -f "$DIR_RAIZ/.env" ]; then
+    set -a
+    . "$DIR_RAIZ/.env"
+    set +a
+fi
+
+ACTION=""
+NUM_STATIONS=""
+START_INDEX=""
+REMOTE_HOST=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        stop|down)
+            ACTION="stop"
+            shift
+            ;;
+        status|ps)
+            ACTION="status"
+            shift
+            ;;
+        --host=*)
+            REMOTE_HOST="${1#*=}"
+            shift
+            ;;
+        --host|-h)
+            REMOTE_HOST="$2"
+            shift 2
+            ;;
+        *)
+            if [ -z "$NUM_STATIONS" ] && [[ "$1" =~ ^[0-9]+$ ]]; then
+                NUM_STATIONS="$1"
+            elif [ -z "$START_INDEX" ] && [[ "$1" =~ ^[0-9]+$ ]]; then
+                START_INDEX="$1"
+            else
+                echo "Error: Argumento no reconocido '$1'."
+                echo "Uso: $0 [número_de_estaciones] [índice_inicial] [--host <IP>]"
+                echo "     $0 stop"
+                echo "     $0 status"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
 # --- Comando: STOP ---
-if [ "$1" = "stop" ] || [ "$1" = "down" ]; then
+if [ "$ACTION" = "stop" ]; then
     echo "==> Buscando contenedores de estaciones (ws-*)..."
     CONTAINERS=$(docker ps -a --filter "name=^/ws-[0-9]+" --format "{{.Names}}")
     if [ -z "$CONTAINERS" ]; then
@@ -44,51 +91,34 @@ if [ "$1" = "stop" ] || [ "$1" = "down" ]; then
 fi
 
 # --- Comando: STATUS ---
-if [ "$1" = "status" ] || [ "$1" = "ps" ]; then
+if [ "$ACTION" = "status" ]; then
     docker ps -a --filter "name=^/ws-[0-9]+" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     exit 0
 fi
 
-# --- Validación de argumentos para lanzar estaciones ---
-NUM_STATIONS=${1:-3}
-START_INDEX=${2:-1}
+# --- Valores por defecto para estaciones si no se indicaron ---
+NUM_STATIONS=${NUM_STATIONS:-3}
+START_INDEX=${START_INDEX:-1}
 
-# Validar que los parámetros sean números enteros positivos
-if ! [[ "$NUM_STATIONS" =~ ^[0-9]+$ ]] || [ "$NUM_STATIONS" -le 0 ]; then
+# Validar que los parámetros sean enteros positivos
+if [ "$NUM_STATIONS" -le 0 ]; then
     echo "Error: El número de estaciones debe ser un entero positivo."
-    echo "Uso: $0 <número_de_estaciones> [índice_inicial]"
-    echo "     $0 stop"
-    echo "     $0 status"
     exit 1
 fi
 
-if ! [[ "$START_INDEX" =~ ^[0-9]+$ ]] || [ "$START_INDEX" -le 0 ]; then
+if [ "$START_INDEX" -le 0 ]; then
     echo "Error: El índice inicial debe ser un entero positivo."
     exit 1
 fi
 
 END_INDEX=$((START_INDEX + NUM_STATIONS - 1))
 
-# Cargar variables desde .env si existe en la raíz
-if [ -f "$DIR_RAIZ/.env" ]; then
-    set -a
-    . "$DIR_RAIZ/.env"
-    set +a
-fi
-
-# Soporte para argumento --host=<IP>
-for arg in "$@"; do
-    case "$arg" in
-        --host=*)
-            REMOTE_HOST="${arg#*=}"
-            CENTRAL_ADDR="$REMOTE_HOST:5000"
-            KAFKA_SERVERS="$REMOTE_HOST:9092"
-            ;;
-    esac
-done
-
-# Si se definió PUBLIC_IP o HOST_IP y no CENTRAL_ADDR directamente:
-if [ -n "$HOST_IP" ]; then
+# Si se pasó --host explícito por argumento:
+if [ -n "$REMOTE_HOST" ]; then
+    CENTRAL_ADDR="$REMOTE_HOST:5000"
+    KAFKA_SERVERS="$REMOTE_HOST:9092"
+# Si se definió HOST_IP o PUBLIC_IP y no CENTRAL_ADDR directamente:
+elif [ -n "$HOST_IP" ]; then
     CENTRAL_ADDR="${CENTRAL_ADDR:-$HOST_IP:5000}"
     KAFKA_SERVERS="${KAFKA_SERVERS:-$HOST_IP:9092}"
 elif [ -n "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "localhost" ]; then
