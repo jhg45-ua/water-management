@@ -31,22 +31,36 @@ services:
     volumes:
       - central-data:/data
 
-  ws:
+  ws-monitor:
     profiles: ["local"]
     build:
       context: .
-      dockerfile: ws/Dockerfile
+      dockerfile: ws/monitor/Dockerfile
+    image: ws-monitor
     restart: unless-stopped
     depends_on:
       - central
-      - kafka
     environment:
       PUERTO_ENGINE: "6001"
       CENTRAL_ADDR: central:5000
       ID_WS: WS-01
       LOCATION: Parque Central
       PROTO: lrc
+
+  ws-engine:
+    profiles: ["local"]
+    build:
+      context: .
+      dockerfile: ws/engine/Dockerfile
+    image: ws-engine
+    restart: unless-stopped
+    depends_on:
+      - ws-monitor
+      - kafka
+    environment:
+      MONITOR_ADDR: ws-monitor:6001
       KAFKA_SERVERS: kafka:19092
+      PROTO: lrc
     stdin_open: true
     tty: true
 

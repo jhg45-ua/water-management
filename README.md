@@ -115,16 +115,21 @@ Adicionalmente, se incluye la suite comparativa `tests/benhmark_protocol.py` que
    ```
    El panel de monitorización quedará accesible en `http://localhost:8080`.
 
-2. **Arrancar N Estaciones de Riego:**
-   Se proporciona el script `launch_ws.sh` que levanta estaciones configuradas en contenedores interactivos:
+2. **Arrancar N Estaciones de Riego (Monitor y Engine en contenedores independientes):**
+   Se proporciona el script `launch_ws.sh` que levanta cada estación como dos contenedores separados (`ws-XX-monitor` y `ws-XX-engine`) interconectados por red interna Docker:
    ```bash
-   ./launch_ws.sh 3         # Lanza WS-01, WS-02 y WS-03
-   ./launch_ws.sh status    # Muestra el estado de las estaciones
-   ./launch_ws.sh stop      # Detiene todas las estaciones
+   ./launch_ws.sh 3         # Lanza WS-01, WS-02 y WS-03 (6 contenedores en total: 3 monitores + 3 engines)
+   ./launch_ws.sh status    # Muestra el estado de todas las estaciones y sus contenedores
+   ./launch_ws.sh stop      # Detiene y elimina todas las estaciones
    ```
-   *Para interactuar o simular una avería por teclado:*
+   *Para interactuar o simular una avería por teclado en el Engine:*
    ```bash
-   docker attach ws-01      # Pulsar 'k' avería, 'r' recuperar, 'm [seg]' riego manual (Salir: Ctrl+P, Ctrl+Q)
+   docker attach ws-01-engine   # Pulsar 'k' avería, 'r' recuperar, 'm [seg]' riego manual (Salir: Ctrl+P, Ctrl+Q)
+   ```
+   *Para simular una caída del Engine (y verificar que el Monitor reporta la avería a Central):*
+   ```bash
+   docker stop ws-01-engine     # Central marcará la estación en avería/fuga
+   docker start ws-01-engine    # El Engine reconecta con el Monitor y recupera el servicio
    ```
 
 3. **Arrancar Operario (WM_FO):**
@@ -168,18 +173,27 @@ Siguiendo el esquema obligatorio del enunciado (Cloud + Laboratorio con 2 PCs):
      ```
 
 3. **PC LAB 2 (Estaciones de riego):**
-   - Ejecución masiva automatizada con el script parametrizado para AWS:
+   - Ejecución masiva automatizada con el script parametrizado para AWS (despliega Monitor y Engine en contenedores independientes):
      ```bash
      CENTRAL_ADDR="<HOST_AWS>:5000" KAFKA_SERVERS="<HOST_AWS>:9092" ./launch_ws.sh 2
      ```
    - O bien despliegue individual contenedor por contenedor:
      ```bash
-     docker run -dit --name ws-01 \
+     # Red común para resolución DNS entre contenedores de la estación
+     docker network create water-management_net 2>/dev/null || true
+
+     # Contenedor 1: Monitor
+     docker run -d --name ws-01-monitor --network water-management_net \
        -e CENTRAL_ADDR="<HOST_AWS>:5000" \
-       -e KAFKA_SERVERS="<HOST_AWS>:9092" \
        -e ID_WS="WS-01" \
        -e LOCATION="Parque Norte" \
-       water-management-ws
+       ws-monitor
+
+     # Contenedor 2: Engine
+     docker run -dit --name ws-01-engine --network water-management_net \
+       -e KAFKA_SERVERS="<HOST_AWS>:9092" \
+       -e MONITOR_ADDR="ws-01-monitor:6001" \
+       ws-engine
      ```
 
 ---
@@ -188,11 +202,13 @@ Siguiendo el esquema obligatorio del enunciado (Cloud + Laboratorio con 2 PCs):
 
 ```text
 ├── WM_Central/         # Servidor central, base de datos SQLite y panel web
-├── ws/                 # Estación de riego (Monitor WM_WS_M y Engine WM_WS_E)
+├── ws/                 # Estación de riego
+│   ├── monitor/        # Monitor WM_WS_M, Dockerfile y script de arranque
+│   └── engine/         # Engine WM_WS_E, Dockerfile y script de arranque
 ├── operator/           # Aplicación del operario WM_FO y ficheros de servicios
 ├── common/             # Protocolo sockets STX/ETX/LRC, serialización y tópicos
-├── launch_ws.sh        # Script bash para automatizar el despliegue de estaciones
-├── docker-compose.yml  # Definición de servicios para Kafka y Central
+├── launch_ws.sh        # Script bash para automatizar el despliegue de estaciones (Monitor + Engine)
+├── docker-compose.yml  # Definición de servicios para Kafka, Central y WS
 ├── prompts/            # Registro de prompts de IA según la normativa de la práctica
 └── tests/              # Pruebas unitarias y benchmarks de sockets
 ```
