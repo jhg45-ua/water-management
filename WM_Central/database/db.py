@@ -1,7 +1,24 @@
 import os
 import sqlite3
 from datetime import datetime
+
 RUTA_BD = os.path.join(os.path.dirname(__file__), "wm.db")
+
+# Columnas añadidas en P2 (se migran de forma idempotente si la BD ya existía)
+COLUMNAS_STATIONS = [
+    ("total", "REAL DEFAULT 0"),
+    ("registered", "INTEGER DEFAULT 0"),
+    ("authenticated", "INTEGER DEFAULT 0"),
+    ("symmetric_key", "TEXT"),
+    ("key_status", "TEXT DEFAULT 'NONE'"),
+    ("city", "TEXT"),
+    ("temp_c", "REAL"),
+    ("weather_condition", "TEXT"),
+    ("weather_alert", "INTEGER DEFAULT 0"),
+    ("weather_reason", "TEXT"),
+    ("weather_updated_at", "TEXT"),
+    ("pending_weather_stop", "INTEGER DEFAULT 0"),
+]
 
 
 def obt_conex():  # Abre una conexión nueva (una por operación: SQLite no se comparte entre hilos)
@@ -10,24 +27,43 @@ def obt_conex():  # Abre una conexión nueva (una por operación: SQLite no se c
     return conexion
 
 
-def ini_bd(ruta=None):  # Crea las tablas si no existen. Se llama una vez al arrancar Central
+def ini_bd(ruta=None):  # Crea las tablas si no existen y migra columnas nuevas al arrancar Central
     global RUTA_BD
     if ruta is not None:
         RUTA_BD = ruta
 
     conexion = obt_conex()
     conexion.execute("CREATE TABLE IF NOT EXISTS operators (id TEXT PRIMARY KEY, name TEXT)")
-    conexion.execute("CREATE TABLE IF NOT EXISTS stations (id TEXT PRIMARY KEY, location TEXT, status TEXT, last_seen TEXT)")
-    try:
-        conexion.execute("ALTER TABLE stations ADD COLUMN total REAL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    conexion.execute(
+        "CREATE TABLE IF NOT EXISTS stations (id TEXT PRIMARY KEY, location TEXT, status TEXT, last_seen TEXT)"
+    )
+
+    for col, definicion in COLUMNAS_STATIONS:
+        try:
+            conexion.execute(f"ALTER TABLE stations ADD COLUMN {col} {definicion}")
+        except sqlite3.OperationalError:
+            pass  # La columna ya existe
+
+    conexion.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            source    TEXT NOT NULL,
+            actor     TEXT NOT NULL,
+            ip        TEXT,
+            action    TEXT NOT NULL,
+            level     TEXT DEFAULT 'INFO',
+            details   TEXT
+        )
+        """
+    )
 
     conexion.commit()
     conexion.close()
 
 
-#Operarios
+# Operarios
 def alta_oper(identificador, nombre):
     conexion = obt_conex()
 
@@ -47,16 +83,30 @@ def hay_oper(identificador):
 
     return fila is not None
 
-#Estaciones
 
-def reg_estac(identificador, ubicacion):  # Registra una estación nueva ,si ya existía solo actualiza la ubicación
+def list_opers():
+    conexion = obt_conex()
+    filas = conexion.execute("SELECT * FROM operators ORDER BY id").fetchall()
+    conexion.close()
+
+    return [dict(fila) for fila in filas]
+
+
+# Estaciones
+def reg_estac(identificador, ubicacion):  # Registra una estación nueva; si ya existía actualiza ubicación
     conexion = obt_conex()
 
     if hay_estac(identificador):
-        conexion.execute("UPDATE stations SET location = ? WHERE id = ?", (ubicacion, identificador))
+        conexion.execute(
+            "UPDATE stations SET location = ?, city = COALESCE(city, ?) WHERE id = ?",
+            (ubicacion, ubicacion, identificador),
+        )
     else:
         # Una estación nueva empieza como DESCONECTADA hasta que se conecte de verdad
-        conexion.execute("INSERT INTO stations (id, location, status, last_seen) VALUES (?, ?, ?, ?)", (identificador, ubicacion, "DISCONNECTED", ahora()))
+        conexion.execute(
+            "INSERT INTO stations (id, location, city, status, last_seen) VALUES (?, ?, ?, ?, ?)",
+            (identificador, ubicacion, ubicacion, "DISCONNECTED", ahora()),
+        )
 
     conexion.commit()
     conexion.close()
@@ -110,7 +160,103 @@ def list_estac():
     return [dict(fila) for fila in filas]
 
 
-#Auxiliar
+# Seguridad / Claves simétricas (P2)
+def fij_clave(identificador, clave):  # Guarda la clave Fernet tras autenticación exitosa
+    conexion = obt_conex()
+    conexion.execute(
+        """
+        UPDATE stations
+        SET registered = 1, authenticated = 1, symmetric_key = ?, key_status = 'ACTIVE', last_seen = ?
+        WHERE id = ?
+        """,
+        (clave, ahora(), identificador),
+    )
+    conexion.commit()
+    conexion.close()
 
+
+def revocar_clave(identificador):  # Borra la clave simétrica y deja la WS fuera de servicio
+    conexion = obt_conex()
+    conexion.execute(
+        """
+        UPDATE stations
+        SET authenticated = 0, symmetric_key = NULL, key_status = 'REVOKED', status = 'OUT_OF_SERVICE', last_seen = ?
+        WHERE id = ?
+        """,
+        (ahora(), identificador),
+    )
+    conexion.commit()
+    conexion.close()
+
+
+# Clima y alertas (P2)
+def act_clima(identificador, ciudad, temp_c, condicion, alerta, motivo=None, pending_stop=False):
+    conexion = obt_conex()
+    conexion.execute(
+        """
+        UPDATE stations
+        SET city = ?, temp_c = ?, weather_condition = ?, weather_alert = ?,
+            weather_reason = ?, weather_updated_at = ?, pending_weather_stop = ?
+        WHERE id = ?
+        """,
+        (ciudad, temp_c, condicion, int(bool(alerta)), motivo, ahora(), int(bool(pending_stop)), identificador),
+    )
+    conexion.commit()
+    conexion.close()
+
+
+def limpiar_alerta(identificador):  # Cancela la alerta climática de una WS
+    conexion = obt_conex()
+    conexion.execute(
+        """
+        UPDATE stations
+        SET weather_alert = 0, weather_reason = NULL, pending_weather_stop = 0, weather_updated_at = ?
+        WHERE id = ?
+        """,
+        (ahora(), identificador),
+    )
+    conexion.commit()
+    conexion.close()
+
+
+# Auditoría (P2)
+def reg_auditoria(source, actor, ip, action, level="INFO", details=""):
+    conexion = obt_conex()
+    conexion.execute(
+        """
+        INSERT INTO audit_logs (timestamp, source, actor, ip, action, level, details)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (ahora(), source, actor, ip, action, level, details),
+    )
+    conexion.commit()
+    conexion.close()
+
+
+def list_auditoria(limit=50, source=None, level=None):  # Filtros opcionales parametrizados (anti SQLi)
+    conexion = obt_conex()
+    filtros = []
+    params = []
+
+    if source:
+        filtros.append("source = ?")
+        params.append(source)
+    if level:
+        filtros.append("level = ?")
+        params.append(level)
+
+    consulta = "SELECT * FROM audit_logs"
+    if filtros:
+        consulta += " WHERE " + " AND ".join(filtros)
+    consulta += " ORDER BY id DESC LIMIT ?"
+    params.append(int(limit))
+
+    filas = conexion.execute(consulta, params).fetchall()
+    conexion.close()
+
+    return [dict(fila) for fila in filas]
+
+
+# Auxiliar
 def ahora():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")

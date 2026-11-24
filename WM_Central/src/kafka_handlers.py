@@ -170,6 +170,9 @@ def manejar_telemetria(mensaje):
         if resumen is not None:
             texto = f"Riego terminado en {ws}: {resumen['volume']:.1f} L en {resumen['duration']} s"
             notificar(resumen["operator"], ws, messages.EV_FINAL, texto, 0, resumen["volume"])
+            if resumen.get("blocked_by_weather"):
+                ordenar(ws, messages.ACC_BLOQUEAR)
+                db.reg_auditoria("CENTRAL", ws, "kafka", "WEATHER_BLOCK_AFTER_WATERING", "WARNING", f"{ws} pasa a OUT_OF_SERVICE tras finalizar riego")
 
         return
 

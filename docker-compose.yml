@@ -26,8 +26,9 @@ services:
     depends_on:
       - kafka
     ports:
-      - "5000:5000"
+      - "5050:5000"
       - "8080:8080"
+      - "8000:8000"
     volumes:
       - central-data:/data
 
