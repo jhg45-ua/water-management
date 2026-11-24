@@ -12,6 +12,7 @@ from src import socket_server
 from src import kafka_handlers
 from src import commands
 from src.panel import app as panel
+from src import api_central
 
 
 # Operarios que se dan de alta al arrancar. Si hace falta alguno más, se añade aquí.
@@ -67,6 +68,9 @@ kafka_handlers.iniciar_kafka(direccion_kafka)
 # Panel web (puerto de la variable PORT, 8080 por defecto)
 puerto_panel = int(os.environ.get("PORT", 8080))
 threading.Thread(target=panel.ini_panel, args=(puerto_panel,), daemon=True).start()
+# API REST de Central (puerto de la variable API_PORT, 8000 por defecto)
+puerto_api = int(os.environ.get("API_PORT", 8000))
+threading.Thread(target=api_central.ini_api, args=(puerto_api,), daemon=True).start()
 
 # Menú de órdenes por consola
 threading.Thread(target=commands.menu_cons, daemon=True).start()
