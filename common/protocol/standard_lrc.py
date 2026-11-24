@@ -117,8 +117,11 @@ class StandardLRCProtocol(BaseProtocol):
         return answer
 
     def receive_request(self, sock: socket.socket) -> str | None:
-        """Servidor: recibe la petición (o None si el cliente envió EOT)"""
-        return self._unpack_frame(sock, allow_eot=True)
+        """Servidor: recibe la petición (o None si el cliente envió EOT o cerró la conexión)"""
+        try:
+            return self._unpack_frame(sock, allow_eot=True)
+        except ConnectionError:
+            return None
 
     def send_response(self, sock: socket.socket, message: str) -> None:
         """Servidor: envía respuesta empaquetada y espera ACK del cliente."""

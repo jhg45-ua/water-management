@@ -35,10 +35,11 @@ jobs:
       - name: Ejecutar tests del protocolo LineDelimited
         run: python tests/test_protocol.py line
 
-      - name: Validar construcción Docker (WM_Central, WS y FO)
+      - name: Validar construcción Docker (WM_Central, WS Monitor, WS Engine y FO)
         run: |
           docker build -f WM_Central/Dockerfile -t wm-central:ci .
-          docker build -f ws/Dockerfile -t wm-ws:ci .
+          docker build -f ws/monitor/Dockerfile -t ws-monitor:ci .
+          docker build -f ws/engine/Dockerfile -t ws-engine:ci .
           docker build -f operator/Dockerfile -t wm-fo:ci .
 
   cd-aws:

@@ -15,6 +15,7 @@ from kafka import KafkaConsumer, KafkaProducer
 from common import topics, messages
 
 regando = False
+monitor_ok = False  # False mientras no hay conexión con el Monitor: la estación cuenta como averiada
 productor_kafka = None
 
 if len(sys.argv) < 3:
@@ -44,17 +45,24 @@ id_ws = None
 averia = False
 protocol = protocol_class()
 
+def conectar_monitor():
+    # Reintenta hasta conectar con el Monitor (también si el Monitor se reinicia)
+    global sock_monitor, monitor_ok
+    while True:
+        try:
+            nuevo = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            nuevo.connect((dir_monitor, puerto_monitor))
+            # Saludo inicial (ENQ -> ACK)
+            protocol.init_connection(nuevo)
+            sock_monitor = nuevo
+            monitor_ok = True
+            return
+        except (ConnectionError, OSError):
+            nuevo.close()
+            time.sleep(1)
+
 print(f"[ENGINE] Conectando al Monitor en {dir_monitor}:{puerto_monitor}...")
-while True:
-    try:
-        sock_monitor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock_monitor.connect((dir_monitor, puerto_monitor))
-        # Saludo inicial (ENQ -> ACK)
-        protocol.init_connection(sock_monitor)
-        break
-    except (ConnectionError, OSError):
-        sock_monitor.close()
-        time.sleep(1)
+conectar_monitor()
 print("[ENGINE] Conectado y listo para recibir comprobaciones de salud.")
 
 def leer_teclado():
@@ -74,7 +82,7 @@ def leer_teclado():
                     print(f"[{id_ws}] Parada manual de riego solicitada.")
                     regando = False
             elif linea.lower().startswith("m"):
-                if averia:
+                if averia or not monitor_ok:
                     print(f"[{id_ws}] Rechazando riego manual: estación en AVERÍA")
                 elif regando:
                     print(f"[{id_ws}] Ya hay un riego en curso")
@@ -164,7 +172,7 @@ def escuchar_kafka():
             accion = orden.get("action")
 
             if accion == messages.ACC_INICIAR:
-                if averia:
+                if averia or not monitor_ok:
                     print(f"[{id_ws}] Rechazando orden de riego: estación en AVERÍA")
                 elif regando:
                     print(f"[{id_ws}] Ya hay un riego en curso")
@@ -186,10 +194,19 @@ def escuchar_kafka():
 
 try:
     while True:
-        peticion = protocol.receive_request(sock_monitor)
+        try:
+            peticion = protocol.receive_request(sock_monitor)
+        except (ConnectionError, OSError):
+            peticion = None
+
         if peticion is None:
-            print(f"[{id_ws or 'ENGINE'}] El Monitor ha cerrado la conexión.")
-            break
+            # Sin Monitor la estación queda como averiada (rechaza riegos) hasta que vuelva
+            print(f"[{id_ws or 'ENGINE'}] El Monitor ha cerrado la conexión. Estación AVERIADA, reintentando...")
+            monitor_ok = False
+            sock_monitor.close()
+            conectar_monitor()
+            print(f"[{id_ws or 'ENGINE'}] Monitor reconectado.")
+            continue
 
         if peticion.startswith("CHECK_HEALTH"):
             # Si aún no sabíamos nuestro ID, lo extraemos de la trama CHECK_HEALTH#WS-01
@@ -199,7 +216,7 @@ try:
                 print(f"[{id_ws}] ID asignado por el Monitor: {id_ws}")
                 # Hilo del teclado
                 threading.Thread(target=leer_teclado, daemon=True).start()
-                
+
                 # Hilo de Kafka (ahora que ya sabemos nuestro id_ws)
                 threading.Thread(target=escuchar_kafka, daemon=True).start()
 

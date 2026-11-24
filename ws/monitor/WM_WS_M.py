@@ -42,6 +42,29 @@ if protocolo_nombre not in PROTOCOLS:
 protocol_class = PROTOCOLS[protocolo_nombre]
 
 lock_central = threading.Lock()  # Para sincronizar el acceso al socket de central
+sock_central = None
+
+def conectar_central():
+    # Conecta y se autentica con Central; reintenta hasta conseguirlo (sirve también cuando Central vuelve)
+    global sock_central
+    while True:
+        try:
+            nuevo = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            nuevo.connect((ip_central, puerto_central))
+            protocol.init_connection(nuevo)
+            peticion_alta = f"AUTH#{id_ws}#{ubicacion}" if ubicacion else f"AUTH#{id_ws}"
+            respuesta = protocol.send_request(nuevo, peticion_alta)
+        except (ConnectionError, OSError, ValueError):
+            nuevo.close()
+            time.sleep(2)
+            continue
+        if respuesta == "OK":
+            sock_central = nuevo
+            print(f"[{id_ws}] Autenticación correcta. Estación activa.")
+            return
+        print(f"[{id_ws}] Error al autenticar: {respuesta}")
+        nuevo.close()
+        sys.exit(1)
 
 def enviar_a_central(mensaje):
     with lock_central:
@@ -95,25 +118,7 @@ def vigilar_engine():
 protocol = protocol_class()
 
 print(f"[{id_ws}] Conectando a Central en {ip_central}:{puerto_central}...")
-while True:
-    try:
-        sock_central = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock_central.connect((ip_central, puerto_central))
-        protocol.init_connection(sock_central)
-        break
-    except (ConnectionError, OSError):
-        sock_central.close()
-        time.sleep(1)
-
-peticion_alta = f"AUTH#{id_ws}#{ubicacion}" if ubicacion else f"AUTH#{id_ws}"
-respuesta = protocol.send_request(sock_central, peticion_alta)
-
-if respuesta == "OK":
-    print(f"[{id_ws}] Autenticación correcta. Estación activa.")
-else:
-    print(f"[{id_ws}] Error al autenticar: {respuesta}")
-    sock_central.close()
-    sys.exit(1)
+conectar_central()
 
 servidor_engine = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 servidor_engine.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -133,8 +138,9 @@ try:
             enviar_a_central("PING")
             # print(f"[{id_ws}] Ping enviado a Central (sesión viva)")
         except (ConnectionError, OSError):
-            print(f"[{id_ws}] Conexión perdida con Central.")
-            break
+            print(f"[{id_ws}] Imposible conectar con WM_Central. Reintentando...")
+            sock_central.close()
+            conectar_central()
 except KeyboardInterrupt:
     print(f"\n[{id_ws}] Desconectando de Central...")
 finally:
