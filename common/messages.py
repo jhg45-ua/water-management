@@ -17,8 +17,11 @@ ACC_BLOQUEAR = "BLOCK"
 ACC_ACTIVAR = "ACTIVATE"
 
 
-def msj_pet(operario, ws, duracion):  # FO -> Central: "quiero regar en esta estación X segundos"
-    return {"type": "REQUEST", "operator": operario, "ws": ws, "duration": duracion}
+def msj_pet(operario, ws, duracion, ip=None):  # FO -> Central: "quiero regar en esta estación X segundos"
+    msg = {"type": "REQUEST", "operator": operario, "ws": ws, "duration": duracion}
+    if ip:
+        msg["ip"] = ip
+    return msg
 
 
 def msj_notif(operario, ws, evento, texto, caudal=0, volumen=0):  # Central -> FO: aviso de un paso
