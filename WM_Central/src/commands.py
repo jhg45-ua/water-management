@@ -1,6 +1,6 @@
-
 from common import messages
 from src import state, kafka_handlers
+from database import db
 
 
 def _aplicar(ws, funcion, texto):
@@ -43,9 +43,34 @@ def ver_estaciones():
     for ws, datos in estaciones.items():
         print(f"   {ws} - {datos['location']} - {datos['status']} - {datos['flow']} L/min, {datos['volume']} L")
 
+def revocar_clave(ws):
+    def _revocar(destino):
+        ok = state.revocar_clave(destino)
+        if ok:
+            kafka_handlers.ordenar(destino, messages.ACC_BLOQUEAR)
+            db.reg_auditoria(
+                "CENTRAL", "ADMIN", "127.0.0.1", "KEY_REVOKED", "SECURITY",
+                f"Clave simétrica revocada desde consola para {destino}",
+                {"ws_id": destino},
+            )
+        return ok
+
+    return _aplicar(ws, _revocar, "revocar clave")
+
+
+def ver_auditoria(limite=15):
+    eventos = db.list_auditoria(limit=limite)
+    if not eventos:
+        print("[AUDITORÍA] No hay eventos registrados")
+        return
+
+    print(f"\n--- Últimos {len(eventos)} eventos de auditoría ---")
+    for ev in eventos:
+        print(f"   [{ev['timestamp']}] [{ev['level']}] {ev['source']}/{ev['actor']} ({ev['ip']}) {ev['action']} -> {ev['details']}")
+
 
 def menu_cons():
-    texto = "\n1) Iniciar riego  2) Bloquear  3) Activar  4) Ver estaciones  0) Cerrar menú"
+    texto = "\n1) Iniciar riego  2) Bloquear  3) Activar  4) Ver estaciones  5) Revocar clave  6) Ver auditoría  0) Cerrar menú"
 
     while True:
         print(texto)
@@ -61,6 +86,10 @@ def menu_cons():
                 activ(input("Estación (id o ALL): ").strip())
             elif opcion == "4":
                 ver_estaciones()
+            elif opcion == "5":
+                revocar_clave(input("Estación (id o ALL): ").strip())
+            elif opcion == "6":
+                ver_auditoria()
             elif opcion == "0":
                 print("[ORDEN] Menú cerrado (Central sigue en marcha)")
                 return

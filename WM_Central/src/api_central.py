@@ -63,12 +63,14 @@ def listar_riegos():
 def listar_auditoria():
     source = request.args.get("source")
     level = request.args.get("level")
+    action = request.args.get("action")
+    actor = request.args.get("actor")
     try:
         limit = max(1, min(500, int(request.args.get("limit", 50))))
     except ValueError:
         return jsonify({"error": "Invalid limit parameter"}), 400
 
-    eventos = db.list_auditoria(limit=limit, source=source, level=level)
+    eventos = db.list_auditoria(limit=limit, source=source, level=level, action=action, actor=actor)
     return jsonify({"events": eventos}), 200
 
 
@@ -91,16 +93,34 @@ def actualizar_clima(ws_id):
     alerta = bool(datos["alert"])
     motivo = datos.get("reason")
 
-    resultado = state.aplicar_clima(ws_id, ciudad, temp_c, condicion, alerta, motivo)
-    if resultado is None:
+    estacion_prev = state.obt_estacion_api(ws_id)
+    if estacion_prev is None:
         return jsonify({"error": f"Station {ws_id} not found"}), 404
+
+    alerta_previa = bool(estacion_prev["weather"]["alert"])
+    ciudad_previa = estacion_prev["weather"]["city"]
+    motivo_previo = estacion_prev["weather"]["reason"]
+
+    resultado = state.aplicar_clima(ws_id, ciudad, temp_c, condicion, alerta, motivo)
 
     if resultado["send_block"]:
         kafka_handlers.ordenar(ws_id, messages.ACC_BLOQUEAR)
 
-    if alerta:
+    # Auditamos solo cuando la alerta es nueva o cambia la ciudad/motivo (evita spam cada 4 s)
+    if alerta and (not alerta_previa or ciudad != ciudad_previa or motivo != motivo_previo):
         detalle = f"{ws_id} ({ciudad}): {temp_c}C, {condicion} - {motivo or 'alerta climática'}"
-        db.reg_auditoria("WM_W", "WM_W", _ip_cliente(), "WEATHER_ALERT", "WARNING", detalle)
+        db.reg_auditoria(
+            "WM_W", "WM_W", _ip_cliente(), "WEATHER_ALERT", "WARNING", detalle,
+            {
+                "ws_id": ws_id,
+                "city": ciudad,
+                "temp_c": temp_c,
+                "condition": condicion,
+                "reason": motivo,
+                "status": resultado["status"],
+                "pending_weather_stop": resultado["pending_weather_stop"],
+            },
+        )
 
     return jsonify({
         "ws_id": resultado["ws_id"],

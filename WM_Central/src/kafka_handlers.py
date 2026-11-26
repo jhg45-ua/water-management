@@ -72,12 +72,22 @@ def _bucle_consumidor(topic, servidor, manejador):
 
         if mensaje is None:
             print(f"[KAFKA] Mensaje no válido en {topic}, se descarta")
+            db.reg_auditoria(
+                "CENTRAL", "KAFKA", "kafka", "KAFKA_INVALID_MSG", "WARNING",
+                f"Mensaje no válido descartado en {topic}",
+                {"topic": topic},
+            )
             continue
 
         try:
             manejador(mensaje)
         except Exception as error:
             print(f"[KAFKA] Error al procesar un mensaje de {topic}: {error}")
+            db.reg_auditoria(
+                "CENTRAL", "KAFKA", "kafka", "KAFKA_ERROR", "ERROR",
+                f"Error procesando mensaje en {topic}: {error}",
+                {"topic": topic, "error": str(error)},
+            )
 
 
 def _enviar(topic, clave, mensaje):
@@ -108,16 +118,23 @@ def manejar_peticion(mensaje):
 
     operario = mensaje.get("operator")
     ws = mensaje.get("ws")
+    ip_origen = mensaje.get("ip") or "kafka"
 
     if not operario or not ws:
         print("[KAFKA] Petición sin operario o estación, se descarta")
+        db.reg_auditoria(
+            "WM_FO", operario or "UNKNOWN", ip_origen, "WATERING_DENIED", "WARNING",
+            "Petición de riego incompleta (sin operario o sin WS)",
+            {"operator": operario, "ws_id": ws},
+        )
         return
 
-    procesar_peticion(operario, ws, mensaje.get("duration"))
+    procesar_peticion(operario, ws, mensaje.get("duration"), ip_origen=ip_origen)
 
 
 # Comprueba si se puede realizar el riego y, si todo está bien, envía la orden para que empiece.
-def procesar_peticion(operario, ws, duracion, desde_central=False):
+def procesar_peticion(operario, ws, duracion, desde_central=False, ip_origen="127.0.0.1"):
+    origen = "CENTRAL" if desde_central else "WM_FO"
     notificar(operario, ws, messages.EV_RECIBIDA, f"Central ha recibido la petición de riego en {ws}")
 
     try:
@@ -126,20 +143,25 @@ def procesar_peticion(operario, ws, duracion, desde_central=False):
         duracion = 0
 
     if duracion <= 0:
-        _denegar(operario, ws, "Duración de riego no válida")
+        _denegar(operario, ws, "Duración de riego no válida", origen, ip_origen, duracion)
         return False
 
     # Si la petición viene de un operario, comprobamos que esté registrado.
     if not desde_central and not db.hay_oper(operario):
-        _denegar(operario, ws, "Operario no registrado")
+        _denegar(operario, ws, "Operario no registrado", origen, ip_origen, duracion)
         return False
 
     reservada, motivo = state.res_riego(ws, operario)
 
     if not reservada:
-        _denegar(operario, ws, motivo)
+        _denegar(operario, ws, motivo, origen, ip_origen, duracion)
         return False
 
+    db.reg_auditoria(
+        origen, operario, ip_origen, "WATERING_AUTHORIZED", "INFO",
+        f"Riego autorizado en {ws} durante {duracion} s",
+        {"ws_id": ws, "operator": operario, "duration": duracion},
+    )
     notificar(operario, ws, messages.EV_AUTORIZADA, f"Riego autorizado en {ws} durante {duracion} s")
     ordenar(ws, messages.ACC_INICIAR, operario, duracion)
 
@@ -147,7 +169,12 @@ def procesar_peticion(operario, ws, duracion, desde_central=False):
 
 
 # Informa al operario de por qué se ha rechazado su petición.
-def _denegar(operario, ws, motivo):
+def _denegar(operario, ws, motivo, origen="WM_FO", ip_origen="kafka", duracion=None):
+    db.reg_auditoria(
+        origen, operario, ip_origen, "WATERING_DENIED", "WARNING",
+        f"Riego denegado en {ws}: {motivo}",
+        {"ws_id": ws, "operator": operario, "duration": duracion, "reason": motivo},
+    )
     notificar(operario, ws, messages.EV_DENEGADA, f"Riego denegado en {ws}: {motivo}")
 
 
@@ -170,9 +197,18 @@ def manejar_telemetria(mensaje):
         if resumen is not None:
             texto = f"Riego terminado en {ws}: {resumen['volume']:.1f} L en {resumen['duration']} s"
             notificar(resumen["operator"], ws, messages.EV_FINAL, texto, 0, resumen["volume"])
+            ip_ws = state.obt_ip(ws)
+            db.reg_auditoria(
+                "WM_WS_E", ws, ip_ws, "WATERING_FINISHED", "INFO", texto,
+                {"ws_id": ws, "operator": resumen["operator"], "volume": resumen["volume"], "duration": resumen["duration"]},
+            )
             if resumen.get("blocked_by_weather"):
                 ordenar(ws, messages.ACC_BLOQUEAR)
-                db.reg_auditoria("CENTRAL", ws, "kafka", "WEATHER_BLOCK_AFTER_WATERING", "WARNING", f"{ws} pasa a OUT_OF_SERVICE tras finalizar riego")
+                db.reg_auditoria(
+                    "CENTRAL", ws, ip_ws, "WEATHER_BLOCK_AFTER_WATERING", "WARNING",
+                    f"{ws} pasa a OUT_OF_SERVICE tras finalizar riego",
+                    {"ws_id": ws, "new_status": state.OUT_OF_SERVICE},
+                )
 
         return
 
@@ -189,6 +225,10 @@ def estacion_con_fuga(ws):
         ordenar(ws, messages.ACC_PARAR)
         texto = f"Riego cortado en {ws} por una fuga: {resumen['volume']:.1f} L en {resumen['duration']} s"
         notificar(resumen["operator"], ws, messages.EV_FUGA, texto, 0, resumen["volume"])
+        db.reg_auditoria(
+            "CENTRAL", ws, state.obt_ip(ws), "WATERING_STOPPED_LEAK", "ERROR", texto,
+            {"ws_id": ws, "operator": resumen["operator"], "volume": resumen["volume"], "duration": resumen["duration"]},
+        )
 
 
 # Actúa cuando una estación se desconecta durante el riego.
@@ -199,11 +239,15 @@ def estacion_desconectada(ws):
         ordenar(ws, messages.ACC_PARAR)
         texto = f"Riego interrumpido en {ws}: la estación se ha desconectado ({resumen['volume']:.1f} L en {resumen['duration']} s)"
         notificar(resumen["operator"], ws, messages.EV_FINAL, texto, 0, resumen["volume"])
+        db.reg_auditoria(
+            "CENTRAL", ws, state.obt_ip(ws), "WATERING_INTERRUPTED", "WARNING", texto,
+            {"ws_id": ws, "operator": resumen["operator"], "volume": resumen["volume"], "duration": resumen["duration"]},
+        )
 
 
 # Permite iniciar un riego desde la propia Central.
 def iniciar_riego_central(ws, duracion):
-    return procesar_peticion(OPERARIO_CENTRAL, ws, duracion, desde_central=True)
+    return procesar_peticion(OPERARIO_CENTRAL, ws, duracion, desde_central=True, ip_origen="127.0.0.1")
 
 
 # Bloquea una estación para que no pueda seguir regando.
@@ -214,6 +258,11 @@ def bloquear_estacion(ws):
         return False
 
     ordenar(ws, messages.ACC_BLOQUEAR)
+    db.reg_auditoria(
+        "CENTRAL", ws, state.obt_ip(ws), "WS_BLOCKED", "WARNING",
+        f"{ws} bloqueada (OUT_OF_SERVICE)",
+        {"ws_id": ws, "new_status": state.OUT_OF_SERVICE},
+    )
 
     if resumen is not None:
         texto = f"Riego cortado en {ws}: la estación ha sido bloqueada por Central ({resumen['volume']:.1f} L en {resumen['duration']} s)"
@@ -228,5 +277,10 @@ def activar_estacion(ws):
 
     if activada:
         ordenar(ws, messages.ACC_ACTIVAR)
+        db.reg_auditoria(
+            "CENTRAL", ws, state.obt_ip(ws), "WS_ACTIVATED", "INFO",
+            f"{ws} reactivada (ACTIVE)",
+            {"ws_id": ws, "new_status": state.ACTIVE},
+        )
 
     return activada
