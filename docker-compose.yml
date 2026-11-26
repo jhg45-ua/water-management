@@ -78,5 +78,23 @@ services:
     stdin_open: true
     tty: true
 
+    weather:
+    profiles: ["local"]
+    build:
+      context: .
+      dockerfile: weather/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - central
+    environment:
+      API_CENTRAL_URL: http://central:8000
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
+      CITIES_FILE: /app/weather/cities.json
+      WEATHER_INTERVAL: "4"
+    volumes:
+      - ./weather/cities.json:/app/weather/cities.json
+    stdin_open: true
+    tty: true
+
 volumes:
   central-data:
