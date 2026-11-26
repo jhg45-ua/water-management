@@ -1,8 +1,12 @@
 import os
 import sqlite3
 from datetime import datetime
+import json
+import threading
 
 RUTA_BD = os.path.join(os.path.dirname(__file__), "wm.db")
+RUTA_AUDIT_JSONL = os.path.join(os.path.dirname(__file__), "audit.jsonl")
+_audit_lock = threading.Lock()
 
 # Columnas añadidas en P2 (se migran de forma idempotente si la BD ya existía)
 COLUMNAS_STATIONS = [
@@ -28,9 +32,10 @@ def obt_conex():  # Abre una conexión nueva (una por operación: SQLite no se c
 
 
 def ini_bd(ruta=None):  # Crea las tablas si no existen y migra columnas nuevas al arrancar Central
-    global RUTA_BD
+    global RUTA_BD, RUTA_AUDIT_JSONL
     if ruta is not None:
         RUTA_BD = ruta
+        RUTA_AUDIT_JSONL = os.path.join(os.path.dirname(os.path.abspath(ruta)), "audit.jsonl")
 
     conexion = obt_conex()
     conexion.execute("CREATE TABLE IF NOT EXISTS operators (id TEXT PRIMARY KEY, name TEXT)")
@@ -54,10 +59,15 @@ def ini_bd(ruta=None):  # Crea las tablas si no existen y migra columnas nuevas 
             ip        TEXT,
             action    TEXT NOT NULL,
             level     TEXT DEFAULT 'INFO',
-            details   TEXT
+            details   TEXT,
+            params    TEXT
         )
         """
     )
+    try:
+        conexion.execute("ALTER TABLE audit_logs ADD COLUMN params TEXT")
+    except sqlite3.OperationalError:
+        pass  # La columna ya existe
 
     conexion.commit()
     conexion.close()
@@ -220,20 +230,43 @@ def limpiar_alerta(identificador):  # Cancela la alerta climática de una WS
 
 
 # Auditoría (P2)
-def reg_auditoria(source, actor, ip, action, level="INFO", details=""):
+def reg_auditoria(source, actor, ip, action, level="INFO", details="", params=None):
+    ts = ahora()
+    params_json = json.dumps(params, ensure_ascii=False) if params is not None else None
+
     conexion = obt_conex()
-    conexion.execute(
+    cursor = conexion.execute(
         """
-        INSERT INTO audit_logs (timestamp, source, actor, ip, action, level, details)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO audit_logs (timestamp, source, actor, ip, action, level, details, params)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (ahora(), source, actor, ip, action, level, details),
+        (ts, source, actor, ip, action, level, details, params_json),
     )
+    evento_id = cursor.lastrowid
     conexion.commit()
     conexion.close()
 
+    # Persistencia estructurada adicional en fichero JSON Lines (un objeto JSON por línea)
+    registro = {
+        "id": evento_id,
+        "timestamp": ts,
+        "source": source,
+        "actor": actor,
+        "ip": ip,
+        "action": action,
+        "level": level,
+        "details": details,
+        "params": params,
+    }
+    try:
+        with _audit_lock:
+            with open(RUTA_AUDIT_JSONL, "a", encoding="utf-8") as f:
+                f.write(json.dumps(registro, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # Un fallo al escribir el fichero no debe tumbar Central
 
-def list_auditoria(limit=50, source=None, level=None):  # Filtros opcionales parametrizados (anti SQLi)
+
+def list_auditoria(limit=50, source=None, level=None, action=None, actor=None):  # Filtros parametrizados (anti SQLi)
     conexion = obt_conex()
     filtros = []
     params = []
@@ -244,6 +277,12 @@ def list_auditoria(limit=50, source=None, level=None):  # Filtros opcionales par
     if level:
         filtros.append("level = ?")
         params.append(level)
+    if action:
+        filtros.append("action = ?")
+        params.append(action)
+    if actor:
+        filtros.append("actor = ?")
+        params.append(actor)
 
     consulta = "SELECT * FROM audit_logs"
     if filtros:
@@ -254,7 +293,16 @@ def list_auditoria(limit=50, source=None, level=None):  # Filtros opcionales par
     filas = conexion.execute(consulta, params).fetchall()
     conexion.close()
 
-    return [dict(fila) for fila in filas]
+    eventos = []
+    for fila in filas:
+        item = dict(fila)
+        if item.get("params"):
+            try:
+                item["params"] = json.loads(item["params"])
+            except ValueError:
+                pass
+        eventos.append(item)
+    return eventos
 
 
 # Auxiliar
