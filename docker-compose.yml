@@ -78,7 +78,7 @@ services:
     stdin_open: true
     tty: true
 
-    weather:
+  weather:
     profiles: ["local"]
     build:
       context: .
