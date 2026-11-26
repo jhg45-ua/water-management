@@ -72,6 +72,7 @@ def nueva_ent(ubicacion, estado, total=0):
         "key_status": "NONE",
         "pending_weather_stop": False,
         "last_seen": _iso_ahora(),
+        "ip": None,
         "weather": {
             "city": ubicacion,
             "temp_c": None,
@@ -262,6 +263,17 @@ def obt_clave(identificador):
     with lock:
         ent = estaciones.get(identificador)
         return ent["symmetric_key"] if ent else None
+
+def fij_ip(identificador, ip):
+    with lock:
+        if identificador in estaciones and ip:
+            estaciones[identificador]["ip"] = ip
+
+
+def obt_ip(identificador):
+    with lock:
+        ent = estaciones.get(identificador)
+        return ent["ip"] if ent and ent.get("ip") else "unknown"
 
 
 # Gestión de clima y alertas (P2)

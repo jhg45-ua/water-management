@@ -3,6 +3,7 @@ import sys
 import time
 import threading
 from kafka import KafkaConsumer, KafkaProducer
+import socket
 
 # Añadimos la raíz del proyecto al path de Python para importar common
 carpeta_raiz = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,6 +35,17 @@ consumidor_listo = threading.Event()
 ultimo_stations = 0  # momento en que llegó el último catálogo de Central (se emite cada 1 s)
 
 servidor_kafka = f"{dir_kafka}:{puerto_kafka}"
+
+def _obtener_ip_local(host_destino):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect((host_destino, 1))
+            return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+
+
+ip_local = _obtener_ip_local(dir_kafka)
 
 def procesar_mensaje(valor):
     global estaciones_actuales, ultimo_stations
@@ -119,7 +131,7 @@ def pedir_riego(ws, duracion):
         return
 
     evento_fin_riego.clear()
-    pet = messages.msj_pet(id_operador, ws, duracion)
+    pet = messages.msj_pet(id_operador, ws, duracion, ip_local)
     productor.send(topics.PETICIONES, messages.a_bytes(pet))
     productor.flush()
     print(f"[{id_operador}] Petición enviada: {ws} durante {duracion} s. Esperando resultado...")
